@@ -1,0 +1,102 @@
+.page { padding: 24px; display: flex; flex-direction: column; gap: 20px; min-height: 100vh; }
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.page-header  { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.page-header h1 { font-size: 22px; font-weight: 700; }
+.subtitle       { color: var(--text-muted); font-size: 13px; }
+.header-right   { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.select-input {
+  background: var(--bg-surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 12px; font-size: 13px; cursor: pointer;
+}
+.status-chip {
+  font-size: 12px; color: var(--text-muted);
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 12px;
+}
+.status-chip.running { border-color: var(--accent); color: var(--accent-light); }
+.ml { margin-left: 10px; }
+
+/* ── Config grid ─────────────────────────────────────────────────────────── */
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+.config-card { display: flex; flex-direction: column; gap: 12px; }
+.cfg-header  { display: flex; align-items: center; gap: 8px; }
+.cfg-label-input {
+  flex: 1; background: var(--bg-elevated); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 10px; font-size: 13px; font-weight: 600;
+}
+.cfg-label-input:focus { outline: none; border-color: var(--accent); }
+.btn-remove {
+  background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 6px; width: 26px; height: 26px; cursor: pointer;
+  font-size: 12px; display: flex; align-items: center; justify-content: center;
+  transition: var(--transition);
+}
+.btn-remove:hover { border-color: var(--danger); color: var(--danger); }
+
+/* Operator chips inside config */
+.op-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.op-chip {
+  padding: 4px 10px; border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated); color: var(--text-muted);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: var(--transition);
+}
+.op-chip:hover  { border-color: var(--accent); color: var(--accent-light); }
+.op-chip.active { border-color: var(--accent); background: rgba(99,102,241,.15); color: var(--accent-light); }
+
+/* Params inside config */
+.cfg-params { display: flex; flex-direction: column; gap: 6px; }
+.param-row  { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.param-row label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; flex: 1; }
+.param-input {
+  width: 80px; background: var(--bg-elevated); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 8px; font-size: 12px; text-align: right;
+}
+.param-input:focus { outline: none; border-color: var(--accent); }
+
+/* Add card */
+.add-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; cursor: pointer; color: var(--text-muted);
+  border: 2px dashed var(--border);
+  min-height: 120px;
+  transition: var(--transition);
+}
+.add-card:hover { border-color: var(--accent); color: var(--accent-light); }
+.add-icon { font-size: 28px; }
+
+/* ── Results table ───────────────────────────────────────────────────────── */
+.results-table { width: 100%; border-collapse: collapse; }
+.results-table th {
+  text-align: left; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-muted);
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+.results-table td { padding: 10px 12px; border-bottom: 1px solid rgba(51,65,85,.5); font-size: 13px; }
+.results-table tr:last-child td { border-bottom: none; }
+.best-row td { background: rgba(34,197,94,.06); }
+.fw { font-weight: 700; }
+
+.op-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.op-tag {
+  font-size: 10px; padding: 2px 8px; border-radius: 10px;
+  background: rgba(99,102,241,.15); color: var(--accent-light); font-weight: 600;
+}
+
+/* ── Charts grid ──────────────────────────────────────────────────────────── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.chart-card { overflow: hidden; }
+@media (max-width: 700px) { .charts-grid { grid-template-columns: 1fr; } }

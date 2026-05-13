@@ -1,0 +1,126 @@
+<div class="charts-wrap">
+
+  <!-- ── Chart 1: Score Progression ─────────────────────────────────────── -->
+  <div class="chart-card wide">
+
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">
+          Score Progression
+          <span class="live-badge" *ngIf="isLive">● LIVE</span>
+        </div>
+        <div class="chart-sub">
+          {{ isLive ? 'Chart updating in real-time…' : 'How the score improved across iterations' }}
+        </div>
+      </div>
+
+      <!-- Score number (top-right of chart) -->
+      <div class="score-badge" *ngIf="currentScore > 0">
+        <span class="score-num" [style.color]="isLive ? '#10b981' : '#6366f1'">
+          {{ currentScore | number:'1.0-0' }}
+        </span>
+        <span class="score-label">{{ isLive ? 'live best' : 'final score' }}</span>
+        <span class="score-delta pos" *ngIf="!isRunning && scoreDelta !== null && scoreDelta! > 0">▲ +{{ scoreDelta }}</span>
+        <span class="score-delta neg" *ngIf="!isRunning && scoreDelta !== null && scoreDelta! < 0">▼ {{ scoreDelta }}</span>
+      </div>
+    </div>
+
+    <!-- Chart always rendered — just hidden until data arrives -->
+    <div class="chart-body" [class.chart-hidden]="!hasData">
+      <apx-chart
+        #scoreChart
+        [series]="scoreOpts.series"
+        [chart]="scoreOpts.chart"
+        [colors]="scoreOpts.colors"
+        [stroke]="scoreOpts.stroke"
+        [fill]="scoreOpts.fill"
+        [xaxis]="scoreOpts.xaxis"
+        [yaxis]="scoreOpts.yaxis"
+        [grid]="scoreOpts.grid"
+        [tooltip]="scoreOpts.tooltip"
+        [markers]="scoreOpts.markers"
+        [dataLabels]="scoreOpts.dataLabels"
+      ></apx-chart>
+    </div>
+
+    <!-- Waiting for first live point -->
+    <div class="waiting-state" *ngIf="!hasData && isRunning">
+      <div class="wait-dots"><span></span><span></span><span></span></div>
+      <p>Waiting for first progress point…</p>
+    </div>
+
+    <!-- Empty — no run yet -->
+    <div class="empty-chart" *ngIf="!hasData && !isRunning">
+      <span>📈</span>
+      <p>Click <strong>Run Algorithm</strong> to see the score progression</p>
+    </div>
+
+  </div>
+
+  <!-- ── Chart 2: Execution Time ─────────────────────────────────────────── -->
+  <div class="chart-card time-card">
+    <div class="chart-title">Execution Time</div>
+    <div class="chart-sub">Duration of the run</div>
+
+    <!-- Live ticking timer -->
+    <div class="time-live" *ngIf="isRunning">
+      <div class="time-big" [style.color]="timeColor">
+        {{ formatDuration(elapsedSeconds) }}
+      </div>
+      <div class="time-running-label">
+        <span class="pulse-dot"></span> running
+      </div>
+      <div class="time-bar-wrap">
+        <div class="time-bar-track">
+          <div class="time-bar-fill indeterminate"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Final time after run -->
+    <div class="time-display" *ngIf="result && !isRunning">
+      <div class="time-big" [style.color]="timeColor">
+        {{ formatDuration(result.executionTime) }}
+      </div>
+      <div class="time-delta" *ngIf="timeDelta !== null">
+        <span [class.faster]="timeDelta! < 0" [class.slower]="timeDelta! > 0">
+          {{ timeDelta! > 0 ? '▲ +' : '▼ ' }}{{ timeDelta }}s vs prev
+        </span>
+      </div>
+
+      <div class="time-bar-wrap">
+        <div class="time-bar-track">
+          <div class="time-bar-fill" [style.width.%]="timePct" [style.background]="timeColor"></div>
+        </div>
+        <span class="time-bar-label">{{ timePct | number:'1.0-0' }}% of 30s budget</span>
+      </div>
+
+      <div class="quick-stats" *ngIf="result.penaltyBreakdown">
+        <div class="qs-item">
+          <span class="qs-label">Base</span>
+          <span class="qs-val accent">{{ result.penaltyBreakdown.baseScore | number:'1.0-0' }}</span>
+        </div>
+        <div class="qs-sep">+</div>
+        <div class="qs-item">
+          <span class="qs-label">Bonus</span>
+          <span class="qs-val success">{{ result.penaltyBreakdown.bonusEarned | number:'1.0-0' }}</span>
+        </div>
+        <div class="qs-sep">−</div>
+        <div class="qs-item">
+          <span class="qs-label">Penalty</span>
+          <span class="qs-val danger">
+            {{ (result.penaltyBreakdown.switchPenaltyTotal + result.penaltyBreakdown.timingPenaltyTotal) | number:'1.0-0' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty -->
+    <div class="empty-chart small" *ngIf="!result && !isRunning">
+      <span>⏱️</span>
+      <p>Run to see timing</p>
+    </div>
+
+  </div>
+
+</div>

@@ -1,0 +1,14 @@
+__pycache__/
+.DS_Store
+*.swp
+*~
+
+# Web / Node (keep clones small and `git add` fast)
+node_modules/
+dist/
+.angular/
+coverage/
+*.log
+venv/
+.env
+.env.*

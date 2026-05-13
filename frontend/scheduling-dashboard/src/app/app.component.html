@@ -1,0 +1,34 @@
+<div class="shell" [class.slim]="sidebarCollapsed">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon">📺</span>
+      <span class="brand-name" *ngIf="!sidebarCollapsed">TV Scheduler</span>
+    </div>
+
+    <nav class="nav">
+      <button *ngFor="let n of navItems"
+        class="nav-btn" [class.active]="activeRoute === n.route"
+        (click)="navigate(n.route)">
+        <span class="nav-icon">{{ n.emoji }}</span>
+        <span class="nav-lbl" *ngIf="!sidebarCollapsed">{{ n.label }}</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <button class="collapse-btn" (click)="sidebarCollapsed=!sidebarCollapsed">
+        {{ sidebarCollapsed ? '›' : '‹' }}
+      </button>
+      <span class="live-dot" [class.on]="signalr.connected$ | async" *ngIf="!sidebarCollapsed">
+        <span class="dot"></span>{{ (signalr.connected$ | async) ? 'Live' : 'Offline' }}
+      </span>
+    </div>
+  </aside>
+
+  <!-- ── Page content ───────────────────────────────────────────────────── -->
+  <main class="main">
+    <router-outlet></router-outlet>
+  </main>
+
+</div>

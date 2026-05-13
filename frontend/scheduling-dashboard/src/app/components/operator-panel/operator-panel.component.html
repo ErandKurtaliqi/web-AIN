@@ -1,0 +1,71 @@
+<div class="panel">
+
+  <!-- Algorithm -->
+  <div class="field-group">
+    <label class="field-label">Algorithm</label>
+    <select class="input" [ngModel]="selectedAlgorithm" (ngModelChange)="algorithmChange.emit($event)"
+      [disabled]="isRunning">
+      <option *ngFor="let a of algorithms" [value]="a.key">{{ a.label }}</option>
+    </select>
+  </div>
+
+  <!-- Operators -->
+  <div class="field-group">
+    <label class="field-label">Operators</label>
+    <div class="op-grid">
+      <button
+        *ngFor="let op of availableOperators"
+        class="op-card"
+        [class.on]="isSelected(op.key)"
+        [style.--c]="op.color"
+        [disabled]="isRunning"
+        (click)="toggle(op.key)"
+        [title]="op.description"
+      >
+        <span class="op-icon">{{ op.icon }}</span>
+        <span class="op-label">{{ op.label }}</span>
+        <span class="op-check" *ngIf="isSelected(op.key)">✓</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Parameters -->
+  <div class="field-group">
+    <label class="field-label">Parameters</label>
+    <div class="param-list">
+      <div class="param-row">
+        <span>Iterations</span>
+        <input type="number" class="num-input" [(ngModel)]="params.maxIterations"
+          min="50" max="2000" step="50" [disabled]="isRunning">
+      </div>
+      <div class="param-row">
+        <span>Restarts</span>
+        <input type="number" class="num-input" [(ngModel)]="params.numRestarts"
+          min="1" max="10" [disabled]="isRunning">
+      </div>
+      <div class="param-row">
+        <span>Insert every</span>
+        <input type="number" class="num-input" [(ngModel)]="params.insertionInterval"
+          min="10" max="200" step="10" [disabled]="isRunning">
+      </div>
+      <div class="param-row">
+        <span>Max Shift</span>
+        <input type="number" class="num-input" [(ngModel)]="params.maxShift"
+          min="1" max="60" [disabled]="isRunning">
+      </div>
+    </div>
+  </div>
+
+  <!-- Run / Stop buttons -->
+  <div class="btn-row">
+    <button class="btn btn-primary btn-full" [disabled]="isRunning" (click)="runClicked.emit()">
+      <span class="btn-spin" *ngIf="isRunning"></span>
+      <span>{{ isRunning ? 'Running…' : '▶ Run Algorithm' }}</span>
+    </button>
+
+    <button class="btn btn-stop-full" *ngIf="isRunning" (click)="stopClicked.emit()">
+      ◼ Stop
+    </button>
+  </div>
+
+</div>

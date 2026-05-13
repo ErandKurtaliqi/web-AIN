@@ -1,0 +1,108 @@
+<div class="page">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header class="page-header">
+    <div>
+      <h1>Schedule View</h1>
+      <p class="subtitle">Live timeline grid · channels × time slots</p>
+    </div>
+    <div class="header-right">
+      <select class="select-input" [(ngModel)]="selectedInstance" (ngModelChange)="onInstanceChange()">
+        <option *ngFor="let i of instances" [value]="i.name">{{ i.name }}</option>
+      </select>
+
+      <select class="select-input" [(ngModel)]="selectedAlgorithm">
+        <option *ngFor="let a of algorithms" [value]="a.key">{{ a.label }}</option>
+      </select>
+
+      <button class="btn btn-primary" (click)="run()" [disabled]="isRunning">
+        <span *ngIf="isRunning" class="spinner"></span>
+        <span *ngIf="!isRunning">▶ Run</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Operator chips ─────────────────────────────────────────────────── -->
+  <div class="chip-row">
+    <button
+      *ngFor="let op of availableOperators"
+      class="chip"
+      [class.active]="selectedOperators.includes(op.key)"
+      (click)="toggleOperator(op.key)"
+    >
+      {{ op.icon }} {{ op.label }}
+    </button>
+  </div>
+
+  <!-- ── Metrics strip ──────────────────────────────────────────────────── -->
+  <div class="metrics-strip" *ngIf="result">
+    <div class="metric"><span class="metric-lbl">Score</span><span class="metric-val text-accent">{{ result.score | number:'1.0-0' }}</span></div>
+    <div class="metric"><span class="metric-lbl">Exec Time</span><span class="metric-val">{{ result.executionTime }}s</span></div>
+    <div class="metric"><span class="metric-lbl">Conflicts</span><span class="metric-val text-warning">{{ manualConflicts ?? result.conflicts }}</span></div>
+    <div class="metric"><span class="metric-lbl">Programs</span><span class="metric-val">{{ result.scheduledPrograms?.length ?? 0 }}</span></div>
+    <div class="metric" *ngIf="result.penaltyBreakdown">
+      <span class="metric-lbl">Channels</span>
+      <span class="metric-val">{{ channelIds.length }}</span>
+    </div>
+    <div class="status-pill" [class.running]="isRunning">{{ statusMessage }}</div>
+  </div>
+
+  <!-- ── Timeline grid ──────────────────────────────────────────────────── -->
+  <div class="card grid-card" *ngIf="channelIds.length > 0; else emptyState">
+
+    <!-- Time axis -->
+    <div class="time-axis">
+      <div class="channel-label-spacer"></div>
+      <div class="time-track">
+        <div
+          *ngFor="let t of timeMarkers"
+          class="time-marker"
+          [style.left.%]="(t / (closingTime - openingTime)) * 100"
+        >{{ timeLabel(t) }}</div>
+      </div>
+    </div>
+
+    <!-- Channel rows -->
+    <div class="channel-row" *ngFor="let ch of channelIds">
+      <div class="channel-label">CH {{ ch }}</div>
+      <div class="program-track">
+
+        <!-- Programs -->
+        <div
+          *ngFor="let prog of programsForChannel(ch)"
+          class="program-block"
+          [style.left.%]="prog.leftPct"
+          [style.width.%]="prog.widthPct"
+          [style.background]="prog.color"
+          [class.manual]="prog.manuallyMoved"
+          [title]="prog.programId + ' (' + prog.start + '–' + prog.end + ')'"
+        >
+          <span class="prog-label">{{ prog.label }}</span>
+          <span class="prog-time">{{ prog.start }}–{{ prog.end }}</span>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Legend -->
+  <div class="legend card" *ngIf="channelIds.length > 0">
+    <span class="legend-title">Genre colors:</span>
+    <span class="legend-item" style="--c:#3b82f6">News</span>
+    <span class="legend-item" style="--c:#22c55e">Sports</span>
+    <span class="legend-item" style="--c:#a855f7">Entertainment</span>
+    <span class="legend-item" style="--c:#f59e0b">Drama</span>
+    <span class="legend-item" style="--c:#ef4444">Movie</span>
+    <span class="legend-item" style="--c:#06b6d4">Documentary</span>
+    <span class="legend-item" style="--c:#6366f1">Other</span>
+  </div>
+
+  <ng-template #emptyState>
+    <div class="empty-state card">
+      <div class="empty-icon">📅</div>
+      <p>{{ isRunning ? 'Running algorithm…' : 'Select an instance and run the algorithm.' }}</p>
+    </div>
+  </ng-template>
+
+</div>

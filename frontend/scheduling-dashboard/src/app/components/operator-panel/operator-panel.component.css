@@ -1,0 +1,106 @@
+.panel {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 16px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+/* ── Labels ──────────────────────────────────────────────────────────────── */
+.field-label {
+  display: block;
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--t3); margin-bottom: 8px;
+}
+.field-group { display: flex; flex-direction: column; }
+
+/* ── Operator grid ───────────────────────────────────────────────────────── */
+.op-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
+}
+
+.op-card {
+  position: relative;
+  display: flex; align-items: center; gap: 7px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 10px;
+  cursor: pointer;
+  transition: all .2s;
+  font-family: inherit;
+}
+.op-card:hover:not([disabled]) {
+  border-color: var(--c, var(--accent));
+  background: color-mix(in srgb, var(--c, var(--accent)) 8%, #fff);
+  transform: translateY(-1px);
+}
+.op-card.on {
+  border-color: var(--c, var(--accent));
+  background: color-mix(in srgb, var(--c, var(--accent)) 12%, #fff);
+  box-shadow: 0 0 0 1px var(--c, var(--accent));
+}
+.op-card[disabled] { opacity: .5; cursor: not-allowed; }
+
+.op-icon  { font-size: 15px; flex-shrink: 0; }
+.op-label { font-size: 12px; font-weight: 700; color: var(--t1); flex: 1; }
+.op-check { font-size: 11px; font-weight: 900; color: var(--c, var(--accent)); flex-shrink: 0; }
+
+/* The last operator spans full width if it's alone in its row */
+.op-card:last-child:nth-child(odd) { grid-column: span 2; }
+
+/* ── Params ──────────────────────────────────────────────────────────────── */
+.param-list { display: flex; flex-direction: column; gap: 7px; }
+.param-row  {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: var(--t2); font-weight: 500;
+}
+.num-input {
+  width: 68px; text-align: right;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 4px 8px; font-size: 13px; font-weight: 700; color: var(--t1);
+  background: var(--bg); outline: none; transition: border-color .2s;
+}
+.num-input:focus { border-color: var(--accent); }
+
+/* ── Auto-run row ────────────────────────────────────────────────────────── */
+.auto-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; background: var(--bg);
+  border: 1.5px solid var(--border); border-radius: 10px;
+}
+
+/* Toggle */
+.toggle { position: relative; display: inline-block; width: 38px; height: 22px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; inset: 0; border-radius: 22px; cursor: pointer;
+  background: var(--border); transition: background .3s;
+}
+.slider::before {
+  content: ''; position: absolute;
+  width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  left: 3px; bottom: 3px; transition: transform .3s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+.toggle input:checked + .slider { background: var(--accent); }
+.toggle input:checked + .slider::before { transform: translateX(16px); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn-row   { display: flex; flex-direction: column; gap: 8px; }
+.btn-full  { width: 100%; justify-content: center; gap: 8px; }
+.btn-spin  {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2.5px solid rgba(255,255,255,.35);
+  border-top-color: #fff; border-radius: 50%;
+  animation: bspin .7s linear infinite;
+}
+@keyframes bspin { to { transform: rotate(360deg); } }
+
+.btn-stop-full {
+  width: 100%; padding: 9px; border-radius: 10px; border: 1.5px solid #fca5a5;
+  background: #fee2e2; color: #e11d48; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: background .2s;
+}
+.btn-stop-full:hover { background: #fecdd3; }

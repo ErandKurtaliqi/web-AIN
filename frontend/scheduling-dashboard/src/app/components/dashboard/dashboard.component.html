@@ -1,0 +1,139 @@
+<div class="page">
+
+  <!-- ── Top bar ─────────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1>Analytics Dashboard</h1>
+      <p>Real-time evaluation &amp; adaptive re-optimization</p>
+    </div>
+    <div class="topbar-right">
+      <select class="input" style="width:160px" [(ngModel)]="selectedInstance"
+        (ngModelChange)="onInstanceChange()" [disabled]="isRunning">
+        <option *ngFor="let i of instances" [value]="i.name">{{ i.name }}</option>
+      </select>
+
+      <button class="btn btn-primary" [disabled]="isRunning" (click)="runAlgorithm()">
+        <span>▶ Run</span>
+      </button>
+
+      <button class="btn btn-stop" *ngIf="isRunning" (click)="stopAlgorithm()">
+        ◼ Stop
+      </button>
+
+      <div class="status-pill" [class.running]="isRunning" [class.done]="!isRunning && !!result">
+        {{ statusMessage }}
+      </div>
+    </div>
+  </header>
+
+  <!-- ── KPI row ──────────────────────────────────────────────────────────── -->
+  <div class="kpi-row">
+
+    <div class="kpi" style="--accent-kpi:#6366f1">
+      <div class="kpi-icon">🏆</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Best Score</div>
+        <div class="kpi-val">{{ bestScore | number:'1.0-0' }}</div>
+        <div class="kpi-sub"
+          *ngIf="improvement !== null"
+          [class.pos]="improvement > 0"
+          [class.neg]="improvement < 0">
+          {{ improvement > 0 ? '▲' : '▼' }} {{ improvement | number:'1.0-0' }} from last run
+        </div>
+        <div class="kpi-sub" *ngIf="improvement === null">—</div>
+      </div>
+    </div>
+
+    <div class="kpi" style="--accent-kpi:#0284c7">
+      <div class="kpi-icon">⚡</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Execution Time</div>
+        <!-- Ticking timer while running -->
+        <div class="kpi-val" *ngIf="isRunning">
+          {{ formatDuration(elapsedSeconds) }}
+        </div>
+        <!-- Final time when done -->
+        <div class="kpi-val" *ngIf="!isRunning">
+          {{ result ? formatDuration(result.executionTime) : '—' }}
+        </div>
+        <div class="kpi-sub">{{ isRunning ? 'elapsed' : 'last run' }}</div>
+      </div>
+    </div>
+
+    <div class="kpi" style="--accent-kpi:#059669">
+      <div class="kpi-icon">⚙️</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Active Operators</div>
+        <div class="kpi-val">{{ activeOpCount }}<span class="kpi-unit"> / 5</span></div>
+        <div class="kpi-sub">selected</div>
+      </div>
+    </div>
+
+    <div class="kpi" style="--accent-kpi:#e11d48">
+      <div class="kpi-icon">⚠️</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Conflicts</div>
+        <div class="kpi-val">{{ conflicts }}</div>
+        <div class="kpi-sub">timing + switches</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Main grid ────────────────────────────────────────────────────────── -->
+  <div class="main-grid">
+
+    <!-- Operator / parameter panel -->
+    <app-operator-panel
+      [selectedOperators]="selectedOperators"
+      [selectedAlgorithm]="selectedAlgorithm"
+      [params]="params"
+      [algorithms]="algorithms"
+      [availableOperators]="availableOperators"
+      [isRunning]="isRunning"
+      (operatorToggle)="toggleOperator($event)"
+      (algorithmChange)="selectedAlgorithm = $event"
+      (runClicked)="runAlgorithm()"
+      (stopClicked)="stopAlgorithm()"
+    ></app-operator-panel>
+
+    <!-- Charts + stats -->
+    <div class="right-col">
+      <app-charts
+        [result]="result"
+        [previousResult]="previousResult"
+        [livePoints]="livePoints"
+        [isRunning]="isRunning"
+        [elapsedSeconds]="elapsedSeconds"
+        [formatDuration]="formatDuration.bind(this)"
+      ></app-charts>
+
+      <!-- Operator effectiveness (shown once a run completes) -->
+      <div class="op-stats-card" *ngIf="result?.operatorStats">
+        <div class="sec-label">Operator Effectiveness</div>
+        <div class="op-stats-grid">
+          <div class="op-stat"
+            *ngFor="let op of availableOperators"
+            [style.--c]="op.color"
+            [class.active]="isOpSelected(op.key)"
+          >
+            <span class="op-stat-icon">{{ op.icon }}</span>
+            <div class="op-stat-body">
+              <div class="op-stat-name">{{ op.label }}</div>
+              <div class="op-stat-row">
+                <span class="op-stat-calls">{{ opCalls(op.key) }} calls</span>
+                <span class="op-stat-impr" *ngIf="isOpSelected(op.key)">
+                  +{{ opDelta(op.key) }} pts
+                </span>
+              </div>
+              <div class="op-stat-bar-track" *ngIf="isOpSelected(op.key) && opCalls(op.key) > 0">
+                <div class="op-stat-bar-fill" [style.width.%]="opImprPct(op.key)"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

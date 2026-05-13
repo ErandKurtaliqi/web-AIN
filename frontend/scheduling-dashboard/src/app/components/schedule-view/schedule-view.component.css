@@ -1,0 +1,119 @@
+.page { padding: 24px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.page-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.page-header h1 { font-size: 22px; font-weight: 700; }
+.subtitle { color: var(--text-muted); font-size: 13px; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.select-input {
+  background: var(--bg-surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 12px; font-size: 13px; cursor: pointer;
+}
+
+/* ── Operator chips ──────────────────────────────────────────────────────── */
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  padding: 5px 14px; border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface); color: var(--text-muted);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: var(--transition);
+}
+.chip:hover  { border-color: var(--accent); color: var(--accent-light); }
+.chip.active { border-color: var(--accent); background: rgba(99,102,241,.15); color: var(--accent-light); }
+
+/* ── Metrics strip ───────────────────────────────────────────────────────── */
+.metrics-strip {
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 20px;
+}
+.metric       { display: flex; flex-direction: column; }
+.metric-lbl   { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); font-weight: 600; }
+.metric-val   { font-size: 18px; font-weight: 700; }
+.status-pill  { margin-left: auto; font-size: 12px; color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; }
+.status-pill.running { border-color: var(--accent); color: var(--accent-light); }
+
+/* ── Grid card ────────────────────────────────────────────────────────────── */
+.grid-card { overflow-x: auto; padding: 16px 20px; }
+
+/* ── Time axis ────────────────────────────────────────────────────────────── */
+.time-axis { display: flex; margin-bottom: 4px; }
+.channel-label-spacer { width: 64px; flex-shrink: 0; }
+.time-track { flex: 1; position: relative; height: 20px; }
+.time-marker {
+  position: absolute; transform: translateX(-50%);
+  font-size: 10px; color: var(--text-muted); white-space: nowrap;
+}
+
+/* ── Channel rows ─────────────────────────────────────────────────────────── */
+.channel-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.channel-label {
+  width: 64px; flex-shrink: 0;
+  font-size: 11px; font-weight: 700; color: var(--text-muted);
+  text-align: right; padding-right: 10px;
+}
+.program-track {
+  flex: 1;
+  position: relative;
+  height: 40px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  min-width: 600px;
+}
+
+/* ── Program blocks ───────────────────────────────────────────────────────── */
+.program-block {
+  position: absolute;
+  top: 3px; bottom: 3px;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 5px;
+  min-width: 2px;
+  cursor: default;
+  transition: filter .15s;
+  border: 1px solid rgba(255,255,255,.1);
+}
+.program-block:hover { filter: brightness(1.2); z-index: 2; }
+.program-block.manual { border: 2px dashed rgba(255,255,255,.5); }
+
+.prog-label {
+  font-size: 10px; font-weight: 700; color: rgba(255,255,255,.95);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.prog-time {
+  font-size: 9px; color: rgba(255,255,255,.6); white-space: nowrap;
+}
+
+/* ── Legend ───────────────────────────────────────────────────────────────── */
+.legend {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px;
+}
+.legend-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+.legend-item {
+  font-size: 11px; display: flex; align-items: center; gap: 5px; color: var(--text-muted);
+}
+.legend-item::before {
+  content: ''; width: 10px; height: 10px; border-radius: 3px;
+  background: var(--c); display: block;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 60px; color: var(--text-muted);
+}
+.empty-icon { font-size: 48px; }

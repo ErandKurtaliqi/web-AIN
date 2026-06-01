@@ -157,14 +157,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
   downloadResultJson(): void {
     if (!this.result) return;
     const payload = {
-      downloadedAt: new Date().toISOString(),
-      parameters: {
-        instance: this.selectedInstance,
-        algorithm: this.selectedAlgorithm,
-        operators: this.selectedOperators,
-        ...this.params,
-      },
-      result: this.result,
+      scheduled_programs: (this.result.scheduledPrograms ?? []).map(program => ({
+        program_id: program.programId,
+        channel_id: program.channelId,
+        start: program.start,
+        end: program.end,
+      })),
+      total_score: Math.round(this.result.score),
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

@@ -38,10 +38,13 @@ builder.Services.AddHttpClient<PythonSchedulerService>(client =>
 });
 
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 // ── App pipeline ──────────────────────────────────────────────────────────────
 var app = builder.Build();
 
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseCors("AllowAngular");
 

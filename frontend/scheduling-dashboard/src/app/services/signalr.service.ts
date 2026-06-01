@@ -2,7 +2,7 @@ import { Injectable, OnDestroy } from '@angular/core';
 import { Subject, BehaviorSubject } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
 import { environment } from '../../environments/environment';
-import { StatusMessage } from '../models/schedule.models';
+import { ProgressPoint, StatusMessage } from '../models/schedule.models';
 
 @Injectable({ providedIn: 'root' })
 export class SignalrService implements OnDestroy {
@@ -14,7 +14,7 @@ export class SignalrService implements OnDestroy {
   readonly scheduleUpdate$ = new Subject<StatusMessage>();
 
   /** Emits each live progress snapshot {iteration, score} while an algorithm runs. */
-  readonly progressUpdate$ = new Subject<{ iteration: number; score: number }>();
+  readonly progressUpdate$ = new Subject<ProgressPoint>();
 
   /** True while the hub connection is active. */
   readonly connected$ = new BehaviorSubject<boolean>(false);
@@ -32,7 +32,7 @@ export class SignalrService implements OnDestroy {
       this.scheduleUpdate$.next(msg);
     });
 
-    this.connection.on('ProgressUpdate', (point: { iteration: number; score: number }) => {
+    this.connection.on('ProgressUpdate', (point: ProgressPoint) => {
       this.progressUpdate$.next(point);
     });
 

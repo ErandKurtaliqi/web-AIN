@@ -8,6 +8,7 @@ export interface RunRequest {
   numRestarts: number;
   insertionInterval: number;
   maxShift: number;
+  maxExecutionSeconds: number;
 }
 
 export interface ConfigEntry {
@@ -17,6 +18,7 @@ export interface ConfigEntry {
   numRestarts: number;
   insertionInterval: number;
   maxShift: number;
+  maxExecutionSeconds: number;
 }
 
 export interface CompareRequest {
@@ -52,6 +54,8 @@ export interface OperatorStat {
 export interface ProgressPoint {
   iteration: number;
   score: number;
+  currentScore?: number;
+  bestScore?: number;
 }
 
 export interface ScheduleResult {
@@ -95,7 +99,18 @@ export interface InstanceInfo {
   channelsCount: number;
   switchPenalty: number;
   terminationPenalty: number;
-  channels: { channelId: number; channelName: string; programCount: number }[];
+  channels: {
+    channelId: number;
+    channelName: string;
+    programCount: number;
+    programs?: {
+      programId: string;
+      start: number;
+      end: number;
+      genre: string;
+      score: number;
+    }[];
+  }[];
   timePreferences: { start: number; end: number; preferredGenre: string; bonus: number }[];
   priorityBlocks: { start: number; end: number; allowedChannels: number[] }[];
 }

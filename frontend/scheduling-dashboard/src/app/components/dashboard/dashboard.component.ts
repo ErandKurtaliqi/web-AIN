@@ -4,7 +4,7 @@ import { takeUntil } from 'rxjs/operators';
 import { ScheduleService } from '../../services/schedule.service';
 import { SignalrService } from '../../services/signalr.service';
 import {
-  ScheduleResult, RunRequest, AVAILABLE_OPERATORS, ALGORITHMS
+  ProgressPoint, ScheduleResult, RunRequest, AVAILABLE_OPERATORS, ALGORITHMS
 } from '../../models/schedule.models';
 
 @Component({
@@ -21,16 +21,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
   selectedInstance = 'toy';
   selectedAlgorithm = 'hill_climbing_restarts';
   selectedOperators: string[] = ['replace', 'swap', 'shift_borders'];
-  params = { maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10 };
+  params = {
+    maxIterations: 200,
+    numRestarts: 3,
+    insertionInterval: 50,
+    maxShift: 10,
+    maxExecutionSeconds: 30,
+  };
 
   isRunning = false;
-  statusMessage = 'Ready — press Run to start';
+  statusMessage = 'Ready - press Run to start';
 
   result: ScheduleResult | null = null;
   previousResult: ScheduleResult | null = null;
 
   /** Live progress points accumulate while the algorithm is running */
-  livePoints: { iteration: number; score: number }[] = [];
+  livePoints: ProgressPoint[] = [];
 
   /** Elapsed seconds (ticking while isRunning) */
   elapsedSeconds = 0;
@@ -57,15 +63,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // Final result / status
     this.signalr.scheduleUpdate$.pipe(takeUntil(this.destroy$)).subscribe(msg => {
       if (msg.status === 'running') {
-        this.statusMessage = '⚙ Running…';
+        this.statusMessage = 'Running...';
       } else if (msg.status === 'completed' && msg.result) {
         this.onResultReceived(msg.result);
         this.isRunning = false;
       } else if (msg.status === 'cancelled') {
-        this.statusMessage = '◼ Stopped';
+        this.statusMessage = 'Stopped';
         this.isRunning = false;
       } else if (msg.status === 'error') {
-        this.statusMessage = '✕ ' + msg.message;
+        this.statusMessage = 'Error: ' + msg.message;
         this.isRunning = false;
       }
     });
@@ -101,13 +107,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.result = null;
     this.previousResult = null;
     this.livePoints = [];
-    this.statusMessage = 'Ready — press Run to start';
+    this.statusMessage = 'Ready - press Run to start';
   }
 
   runAlgorithm(): void {
     if (this.isRunning) return;
     if (this.selectedOperators.length === 0) {
-      this.statusMessage = '⚠ Select at least one operator';
+      this.statusMessage = 'Select at least one operator';
       return;
     }
 
@@ -115,7 +121,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.livePoints = [];
     this.elapsedSeconds = 0;
     this.timerStart = Date.now();
-    this.statusMessage = '⚙ Running…';
+    this.statusMessage = 'Running...';
 
     const request: RunRequest = {
       instance: this.selectedInstance,
@@ -127,7 +133,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // POST returns 202; the real results arrive via SignalR
     this.scheduleService.run(request).pipe(takeUntil(this.destroy$)).subscribe({
       error: err => {
-        this.statusMessage = '✕ ' + (err.error?.error ?? err.message ?? 'Could not reach server');
+        this.statusMessage = 'Error: ' + (err.error?.error ?? err.message ?? 'Could not reach server');
         this.isRunning = false;
       },
     });
@@ -138,14 +144,35 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.scheduleService.cancelRun(this.selectedInstance)
       .pipe(takeUntil(this.destroy$))
       .subscribe({ error: () => {} });
-    this.statusMessage = '◼ Stopping…';
+    this.statusMessage = 'Stopping...';
   }
 
   private onResultReceived(result: ScheduleResult): void {
     this.previousResult = this.result;
     this.result = result;
     this.elapsedSeconds = result.executionTime;
-    this.statusMessage = `✓ Done — Score: ${result.score.toFixed(0)}  ·  ${this.formatDuration(result.executionTime)}`;
+    this.statusMessage = `Done - Score: ${result.score.toFixed(0)} - ${this.formatDuration(result.executionTime)}`;
+  }
+
+  downloadResultJson(): void {
+    if (!this.result) return;
+    const payload = {
+      downloadedAt: new Date().toISOString(),
+      parameters: {
+        instance: this.selectedInstance,
+        algorithm: this.selectedAlgorithm,
+        operators: this.selectedOperators,
+        ...this.params,
+      },
+      result: this.result,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${this.selectedInstance}_${this.selectedAlgorithm}_${Math.round(this.result.score)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ── Utilities ─────────────────────────────────────────────────────────────
@@ -177,4 +204,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (!s || s.calls === 0) return 0;
     return (s.improvements / s.calls) * 100;
   }
+
 }
+

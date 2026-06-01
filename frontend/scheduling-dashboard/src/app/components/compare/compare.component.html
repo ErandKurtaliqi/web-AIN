@@ -1,30 +1,30 @@
 <div class="page">
-
-  <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <header class="page-header">
     <div>
       <h1>Algorithm Comparison</h1>
-      <p class="subtitle">Side-by-side evaluation of different operator configurations</p>
+      <p class="subtitle">Live ranked comparison of operator configurations</p>
     </div>
+
     <div class="header-right">
-      <select class="select-input" [(ngModel)]="selectedInstance">
+      <select class="select-input" [(ngModel)]="selectedInstance" (change)="onInstanceChange()" [disabled]="isRunning">
         <option *ngFor="let i of instances" [value]="i.name">{{ i.name }}</option>
       </select>
+
       <button class="btn btn-primary" (click)="runComparison()" [disabled]="isRunning">
-        <span *ngIf="isRunning" class="spinner"></span>
-        <span *ngIf="!isRunning">▶ Compare All</span>
+        <span *ngIf="isRunning" class="spin"></span>
+        <span *ngIf="!isRunning">Compare Live</span>
       </button>
+
+      <button class="btn btn-ghost" *ngIf="isRunning" (click)="stopComparison()">Stop</button>
       <span class="status-chip" [class.running]="isRunning">{{ statusMessage }}</span>
     </div>
   </header>
 
-  <!-- ── Config cards ───────────────────────────────────────────────────── -->
-  <div class="config-grid">
-
-    <div class="card config-card" *ngFor="let cfg of configs; let i = index">
+  <section class="config-grid">
+    <div class="card config-card" *ngFor="let cfg of configs; let i = index" [class.active-config]="i === activeConfigIndex">
       <div class="cfg-header">
-        <input class="cfg-label-input" [(ngModel)]="cfg.label" placeholder="Config label">
-        <button class="btn-remove" (click)="removeConfig(i)" title="Remove">✕</button>
+        <input class="cfg-label-input" [(ngModel)]="cfg.label" placeholder="Config label" [disabled]="isRunning">
+        <button class="btn-remove" (click)="removeConfig(i)" title="Remove" [disabled]="isRunning">x</button>
       </div>
 
       <div class="op-chips">
@@ -33,143 +33,121 @@
           class="op-chip"
           [class.active]="isOpSelected(cfg, op.key)"
           (click)="toggleOperatorInConfig(cfg, op.key)"
-        >{{ op.icon }} {{ op.label }}</button>
+          [disabled]="isRunning"
+          [title]="op.description"
+        >{{ op.label }}</button>
       </div>
 
       <div class="cfg-params">
         <div class="param-row">
           <label>Iterations</label>
-          <input type="number" [(ngModel)]="cfg.maxIterations" min="1" class="param-input">
+          <input type="number" [(ngModel)]="cfg.maxIterations" min="1" class="param-input" [disabled]="isRunning">
         </div>
         <div class="param-row">
           <label>Restarts</label>
-          <input type="number" [(ngModel)]="cfg.numRestarts" min="1" class="param-input">
+          <input type="number" [(ngModel)]="cfg.numRestarts" min="1" class="param-input" [disabled]="isRunning">
         </div>
         <div class="param-row">
           <label>Insert Interval</label>
-          <input type="number" [(ngModel)]="cfg.insertionInterval" min="1" class="param-input">
+          <input type="number" [(ngModel)]="cfg.insertionInterval" min="1" class="param-input" [disabled]="isRunning">
         </div>
         <div class="param-row">
           <label>Max Shift</label>
-          <input type="number" [(ngModel)]="cfg.maxShift" min="1" class="param-input">
+          <input type="number" [(ngModel)]="cfg.maxShift" min="1" class="param-input" [disabled]="isRunning">
+        </div>
+      </div>
+
+      <div class="run-meter" *ngIf="liveRows[i]">
+        <div class="meter-meta">
+          <span>{{ liveRows[i].status | titlecase }}</span>
+          <span>{{ progressPercent(liveRows[i], i) }}%</span>
+        </div>
+        <div class="meter-track">
+          <span [style.width.%]="progressPercent(liveRows[i], i)"></span>
         </div>
       </div>
     </div>
 
-    <!-- Add Config -->
-    <div class="card add-card" (click)="addConfig()">
+    <button class="card add-card" (click)="addConfig()" [disabled]="isRunning">
       <span class="add-icon">+</span>
       <span>Add Configuration</span>
+    </button>
+  </section>
+
+  <section class="insight-strip" *ngIf="liveRows.length">
+    <div class="insight-item">
+      <span class="insight-label">Completed</span>
+      <strong>{{ completedRows().length }} / {{ liveRows.length }}</strong>
     </div>
-
-  </div>
-
-  <!-- ── Results summary table ──────────────────────────────────────────── -->
-  <div class="card" *ngIf="compareResult">
-    <div class="section-title">
-      Comparison Results
-      <span class="badge badge-success ml">Best: {{ compareResult.bestLabel }}</span>
+    <div class="insight-item">
+      <span class="insight-label">Best Score</span>
+      <strong>{{ compareResult?.bestScore ? (compareResult?.bestScore | number:'1.0-0') : '-' }}</strong>
     </div>
-    <table class="results-table">
-      <thead>
-        <tr>
-          <th>Configuration</th>
-          <th>Operators</th>
-          <th>Score</th>
-          <th>Improvement</th>
-          <th>Exec Time</th>
-          <th>Conflicts</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let r of compareResult.results" [class.best-row]="isBest(r)">
-          <td>
-            <span class="badge" [class.badge-success]="isBest(r)" [class.badge-accent]="!isBest(r)">
-              {{ r.label }}
-            </span>
-          </td>
-          <td>
-            <div class="op-tags">
-              <span class="op-tag" *ngFor="let op of r.operators">{{ op }}</span>
-            </div>
-          </td>
-          <td class="text-accent fw">{{ r.score | number:'1.0-0' }}</td>
-          <td [class.text-success]="r.scoreImprovement > 0" [class.text-danger]="r.scoreImprovement < 0">
-            {{ r.scoreImprovement > 0 ? '+' : '' }}{{ r.scoreImprovement | number:'1.0-1' }}
-          </td>
-          <td>{{ r.executionTime }}s</td>
-          <td [class.text-warning]="r.conflicts > 0">{{ r.conflicts }}</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+    <div class="insight-item">
+      <span class="insight-label">Leader</span>
+      <strong>{{ compareResult?.bestLabel || '-' }}</strong>
+    </div>
+    <div class="insight-item">
+      <span class="insight-label">Instance</span>
+      <strong>{{ selectedInstance }}</strong>
+    </div>
+  </section>
 
-  <!-- ── Charts ──────────────────────────────────────────────────────────── -->
-  <div class="charts-grid" *ngIf="compareResult">
-
-    <div class="card chart-card">
-      <div class="section-title">Final Score by Configuration</div>
+  <section class="curve-layout">
+    <div class="card chart-card unified">
+      <div class="chart-head">
+        <div>
+          <div class="section-title">Unified X/Y Performance Curves</div>
+          <p>Score, conflicts and execution time are drawn together as moving coordinate curves</p>
+        </div>
+        <span class="live-pill" [class.running]="isRunning">{{ isRunning ? 'Live stream' : 'Visual ready' }}</span>
+      </div>
       <apx-chart
-        [series]="scoreBarOpts.series"
-        [chart]="scoreBarOpts.chart"
-        [xaxis]="scoreBarOpts.xaxis"
-        [yaxis]="scoreBarOpts.yaxis"
-        [colors]="scoreBarOpts.colors"
-        [plotOptions]="scoreBarOpts.plotOptions"
-        [legend]="scoreBarOpts.legend"
-        [tooltip]="scoreBarOpts.tooltip"
-        [grid]="scoreBarOpts.grid"
-        [dataLabels]="scoreBarOpts.dataLabels"
+        [series]="compareCurveOpts.series"
+        [chart]="compareCurveOpts.chart"
+        [xaxis]="compareCurveOpts.xaxis"
+        [yaxis]="compareCurveOpts.yaxis"
+        [colors]="compareCurveOpts.colors"
+        [stroke]="compareCurveOpts.stroke"
+        [markers]="compareCurveOpts.markers"
+        [grid]="compareCurveOpts.grid"
+        [legend]="compareCurveOpts.legend"
+        [tooltip]="compareCurveOpts.tooltip"
+        [dataLabels]="compareCurveOpts.dataLabels"
+        [annotations]="compareCurveOpts.annotations"
       ></apx-chart>
+
+      <svg class="ambient-overlay" [class.hidden]="completedRows().length > 0 || (activeConfigIndex >= 0 && liveRows[activeConfigIndex].progress.length > 0)" viewBox="0 0 1000 300" preserveAspectRatio="none">
+        <path class="ambient-line blue" d="M0,92 C110,18 210,28 315,102 C425,180 540,210 655,118 C765,35 880,45 1000,125" />
+        <path class="ambient-line green" d="M0,178 C120,245 235,240 350,172 C475,96 605,82 735,152 C845,212 920,205 1000,162" />
+        <path class="ambient-line orange" d="M0,220 C95,154 205,138 315,194 C440,258 540,255 650,188 C780,110 895,120 1000,176" />
+      </svg>
     </div>
 
-    <div class="card chart-card">
-      <div class="section-title">Execution Time (s)</div>
-      <apx-chart
-        [series]="timeBarOpts.series"
-        [chart]="timeBarOpts.chart"
-        [xaxis]="timeBarOpts.xaxis"
-        [yaxis]="timeBarOpts.yaxis"
-        [colors]="timeBarOpts.colors"
-        [plotOptions]="timeBarOpts.plotOptions"
-        [legend]="timeBarOpts.legend"
-        [tooltip]="timeBarOpts.tooltip"
-        [grid]="timeBarOpts.grid"
-        [dataLabels]="timeBarOpts.dataLabels"
-      ></apx-chart>
+    <div class="curve-notes">
+      <div class="curve-note">
+        <span class="dot score"></span>
+        <strong>Score</strong>
+        <small>higher curve means better final score</small>
+      </div>
+      <div class="curve-note">
+        <span class="dot clean"></span>
+        <strong>Cleanliness</strong>
+        <small>higher curve means fewer conflicts</small>
+      </div>
+      <div class="curve-note">
+        <span class="dot speed"></span>
+        <strong>Speed</strong>
+        <small>higher curve means faster execution</small>
+      </div>
     </div>
+  </section>
 
-    <div class="card chart-card">
-      <div class="section-title">Conflicts per Configuration</div>
-      <apx-chart
-        [series]="conflBarOpts.series"
-        [chart]="conflBarOpts.chart"
-        [xaxis]="conflBarOpts.xaxis"
-        [yaxis]="conflBarOpts.yaxis"
-        [colors]="conflBarOpts.colors"
-        [plotOptions]="conflBarOpts.plotOptions"
-        [legend]="conflBarOpts.legend"
-        [tooltip]="conflBarOpts.tooltip"
-        [grid]="conflBarOpts.grid"
-        [dataLabels]="conflBarOpts.dataLabels"
-      ></apx-chart>
+  <section class="result-ribbons" *ngIf="compareResult">
+    <div class="result-ribbon" *ngFor="let r of compareResult.results" [class.best-ribbon]="isBest(r)">
+      <span>{{ r.label }}</span>
+      <strong>{{ r.score | number:'1.0-0' }}</strong>
+      <small>{{ r.conflicts }} conflicts · {{ r.executionTime | number:'1.1-2' }}s</small>
     </div>
-
-    <div class="card chart-card">
-      <div class="section-title">Multi-Metric Radar</div>
-      <apx-chart
-        [series]="radarOpts.series"
-        [chart]="radarOpts.chart"
-        [xaxis]="radarOpts.xaxis"
-        [colors]="radarOpts.colors"
-        [legend]="radarOpts.legend"
-        [tooltip]="radarOpts.tooltip"
-        [fill]="radarOpts.fill"
-        [stroke]="radarOpts.stroke"
-        [markers]="radarOpts.markers"
-      ></apx-chart>
-    </div>
-
-  </div>
-
+  </section>
 </div>

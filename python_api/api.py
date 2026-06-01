@@ -61,6 +61,7 @@ class RunRequest(BaseModel):
     num_restarts: int = Field(default=3, ge=1, le=50)
     insertion_interval: int = Field(default=50, ge=1, le=1000)
     max_shift: int = Field(default=10, ge=1, le=200)
+    max_execution_seconds: int = Field(default=30, ge=1, le=3600)
 
 
 class ConfigEntry(BaseModel):
@@ -70,6 +71,7 @@ class ConfigEntry(BaseModel):
     num_restarts: int = 3
     insertion_interval: int = 50
     max_shift: int = 10
+    max_execution_seconds: int = 30
 
 
 class CompareRequest(BaseModel):
@@ -84,6 +86,7 @@ class ReoptimizeRequest(BaseModel):
     num_restarts: int = 3
     insertion_interval: int = 50
     max_shift: int = 10
+    max_execution_seconds: int = 30
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +162,7 @@ def _run(request: RunRequest) -> Dict[str, Any]:
         num_restarts=request.num_restarts,
         insertion_interval=request.insertion_interval,
         max_shift=request.max_shift,
+        max_execution_seconds=request.max_execution_seconds,
     )
 
     result = solver.solve()
@@ -228,6 +232,16 @@ def instance_info(instance_name: str):
                 "channel_id": ch.channel_id,
                 "channel_name": ch.channel_name,
                 "program_count": len(ch.programs),
+                "programs": [
+                    {
+                        "program_id": p.program_id,
+                        "start": p.start,
+                        "end": p.end,
+                        "genre": p.genre,
+                        "score": p.score,
+                    }
+                    for p in ch.programs
+                ],
             }
             for ch in instance.channels
         ],
@@ -284,6 +298,7 @@ async def run_algorithm_stream(request_data: RunRequest, http_request: Request):
         num_restarts=request_data.num_restarts,
         insertion_interval=request_data.insertion_interval,
         max_shift=request_data.max_shift,
+        max_execution_seconds=request_data.max_execution_seconds,
     )
 
     progress_q: stdlib_queue.Queue = stdlib_queue.Queue()
@@ -352,6 +367,7 @@ def compare_configurations(request: CompareRequest):
             num_restarts=cfg.num_restarts,
             insertion_interval=cfg.insertion_interval,
             max_shift=cfg.max_shift,
+            max_execution_seconds=cfg.max_execution_seconds,
         )
         result = solver.solve()
         result["label"] = cfg.label
@@ -380,5 +396,6 @@ def reoptimize(request: ReoptimizeRequest):
             num_restarts=request.num_restarts,
             insertion_interval=request.insertion_interval,
             max_shift=request.max_shift,
+            max_execution_seconds=request.max_execution_seconds,
         )
     )

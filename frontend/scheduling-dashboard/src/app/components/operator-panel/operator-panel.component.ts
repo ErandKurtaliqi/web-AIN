@@ -9,7 +9,13 @@ export class OperatorPanelComponent {
 
   @Input() selectedOperators: string[] = [];
   @Input() selectedAlgorithm!: string;
-  @Input() params!: { maxIterations: number; numRestarts: number; insertionInterval: number; maxShift: number };
+  @Input() params!: {
+    maxIterations: number;
+    numRestarts: number;
+    insertionInterval: number;
+    maxShift: number;
+    maxExecutionSeconds: number;
+  };
   @Input() algorithms: { key: string; label: string }[] = [];
   @Input() availableOperators: { key: string; label: string; icon: string; color: string; description: string }[] = [];
   @Input() isRunning = false;

@@ -89,8 +89,14 @@ public class PythonSchedulerService(
                     {
                         var iteration = doc.RootElement.GetProperty("iteration").GetInt32();
                         var score     = doc.RootElement.GetProperty("score").GetDouble();
+                        var currentScore = doc.RootElement.TryGetProperty("current_score", out var currentProp)
+                            ? currentProp.GetDouble()
+                            : score;
+                        var bestScore = doc.RootElement.TryGetProperty("best_score", out var bestProp)
+                            ? bestProp.GetDouble()
+                            : score;
                         await hubContext.Clients.Group(instanceGroup)
-                            .SendAsync("ProgressUpdate", new { iteration, score }, ct);
+                            .SendAsync("ProgressUpdate", new { iteration, score, currentScore, bestScore }, ct);
                         break;
                     }
 
@@ -154,6 +160,7 @@ public class PythonSchedulerService(
                     num_restarts = c.NumRestarts,
                     insertion_interval = c.InsertionInterval,
                     max_shift = c.MaxShift,
+                    max_execution_seconds = c.MaxExecutionSeconds,
                 })
             };
 
@@ -208,6 +215,7 @@ public class PythonSchedulerService(
         num_restarts = req.NumRestarts,
         insertion_interval = req.InsertionInterval,
         max_shift = req.MaxShift,
+        max_execution_seconds = req.MaxExecutionSeconds,
     };
 }
 

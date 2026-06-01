@@ -1,6 +1,4 @@
 <div class="page">
-
-  <!-- ── Top bar ─────────────────────────────────────────────────────────── -->
   <header class="topbar">
     <div class="topbar-left">
       <h1>Analytics Dashboard</h1>
@@ -13,11 +11,15 @@
       </select>
 
       <button class="btn btn-primary" [disabled]="isRunning" (click)="runAlgorithm()">
-        <span>▶ Run</span>
+        <span>Run</span>
       </button>
 
       <button class="btn btn-stop" *ngIf="isRunning" (click)="stopAlgorithm()">
-        ◼ Stop
+        Stop
+      </button>
+
+      <button class="btn" *ngIf="result && !isRunning" (click)="downloadResultJson()">
+        JSON
       </button>
 
       <div class="status-pill" [class.running]="isRunning" [class.done]="!isRunning && !!result">
@@ -26,11 +28,9 @@
     </div>
   </header>
 
-  <!-- ── KPI row ──────────────────────────────────────────────────────────── -->
   <div class="kpi-row">
-
     <div class="kpi" style="--accent-kpi:#6366f1">
-      <div class="kpi-icon">🏆</div>
+      <div class="kpi-icon">Score</div>
       <div class="kpi-body">
         <div class="kpi-lbl">Best Score</div>
         <div class="kpi-val">{{ bestScore | number:'1.0-0' }}</div>
@@ -38,52 +38,42 @@
           *ngIf="improvement !== null"
           [class.pos]="improvement > 0"
           [class.neg]="improvement < 0">
-          {{ improvement > 0 ? '▲' : '▼' }} {{ improvement | number:'1.0-0' }} from last run
+          {{ improvement > 0 ? '+' : '' }}{{ improvement | number:'1.0-0' }} from last run
         </div>
-        <div class="kpi-sub" *ngIf="improvement === null">—</div>
+        <div class="kpi-sub" *ngIf="improvement === null">-</div>
       </div>
     </div>
 
     <div class="kpi" style="--accent-kpi:#0284c7">
-      <div class="kpi-icon">⚡</div>
+      <div class="kpi-icon">Time</div>
       <div class="kpi-body">
         <div class="kpi-lbl">Execution Time</div>
-        <!-- Ticking timer while running -->
-        <div class="kpi-val" *ngIf="isRunning">
-          {{ formatDuration(elapsedSeconds) }}
-        </div>
-        <!-- Final time when done -->
-        <div class="kpi-val" *ngIf="!isRunning">
-          {{ result ? formatDuration(result.executionTime) : '—' }}
-        </div>
+        <div class="kpi-val" *ngIf="isRunning">{{ formatDuration(elapsedSeconds) }}</div>
+        <div class="kpi-val" *ngIf="!isRunning">{{ result ? formatDuration(result.executionTime) : '0s' }}</div>
         <div class="kpi-sub">{{ isRunning ? 'elapsed' : 'last run' }}</div>
       </div>
     </div>
 
-    <div class="kpi" style="--accent-kpi:#059669">
-      <div class="kpi-icon">⚙️</div>
+    <div class="kpi" style="--accent-kpi:#059669" *ngIf="result as r">
+      <div class="kpi-icon">Start</div>
       <div class="kpi-body">
-        <div class="kpi-lbl">Active Operators</div>
-        <div class="kpi-val">{{ activeOpCount }}<span class="kpi-unit"> / 5</span></div>
-        <div class="kpi-sub">selected</div>
+        <div class="kpi-lbl">Initial Solution</div>
+        <div class="kpi-val">{{ r.initialScore | number:'1.0-0' }}</div>
+        <div class="kpi-sub">+{{ r.scoreImprovement | number:'1.0-0' }} improvement</div>
       </div>
     </div>
 
     <div class="kpi" style="--accent-kpi:#e11d48">
-      <div class="kpi-icon">⚠️</div>
+      <div class="kpi-icon">Risk</div>
       <div class="kpi-body">
         <div class="kpi-lbl">Conflicts</div>
         <div class="kpi-val">{{ conflicts }}</div>
         <div class="kpi-sub">timing + switches</div>
       </div>
     </div>
-
   </div>
 
-  <!-- ── Main grid ────────────────────────────────────────────────────────── -->
   <div class="main-grid">
-
-    <!-- Operator / parameter panel -->
     <app-operator-panel
       [selectedOperators]="selectedOperators"
       [selectedAlgorithm]="selectedAlgorithm"
@@ -97,7 +87,6 @@
       (stopClicked)="stopAlgorithm()"
     ></app-operator-panel>
 
-    <!-- Charts + stats -->
     <div class="right-col">
       <app-charts
         [result]="result"
@@ -105,10 +94,10 @@
         [livePoints]="livePoints"
         [isRunning]="isRunning"
         [elapsedSeconds]="elapsedSeconds"
+        [timeBudgetSeconds]="params.maxExecutionSeconds"
         [formatDuration]="formatDuration.bind(this)"
       ></app-charts>
 
-      <!-- Operator effectiveness (shown once a run completes) -->
       <div class="op-stats-card" *ngIf="result?.operatorStats">
         <div class="sec-label">Operator Effectiveness</div>
         <div class="op-stats-grid">
@@ -134,6 +123,5 @@
         </div>
       </div>
     </div>
-
   </div>
 </div>

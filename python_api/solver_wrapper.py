@@ -34,6 +34,7 @@ class ConfigurableSolver:
         num_restarts: int = 3,
         insertion_interval: int = 50,
         max_shift: int = 10,
+        max_execution_seconds: int = 30,
     ) -> None:
         self.initial_solution = deepcopy(solution)
         self.instance = instance
@@ -44,6 +45,7 @@ class ConfigurableSolver:
         self.num_restarts = max(1, num_restarts)
         self.insertion_interval = max(1, insertion_interval)
         self.max_shift = max(1, max_shift)
+        self.max_execution_seconds = max(1, max_execution_seconds)
 
         self.operator_stats: Dict[str, Dict[str, Any]] = {
             op: {"calls": 0, "improvements": 0, "score_delta": 0.0}
@@ -77,6 +79,9 @@ class ConfigurableSolver:
             if stop_event and stop_event.is_set():
                 stopped_early = True
                 break
+            if time.time() - start_time >= self.max_execution_seconds:
+                stopped_early = True
+                break
 
             current = (
                 deepcopy(self.initial_solution)
@@ -86,6 +91,9 @@ class ConfigurableSolver:
 
             for i in range(self.max_iterations):
                 if stop_event and stop_event.is_set():
+                    stopped_early = True
+                    break
+                if time.time() - start_time >= self.max_execution_seconds:
                     stopped_early = True
                     break
 
@@ -117,7 +125,12 @@ class ConfigurableSolver:
 
                 # Record progress snapshot and fire callback
                 if global_iter % record_every == 0:
-                    point = {"iteration": global_iter, "score": global_best.fitness}
+                    point = {
+                        "iteration": global_iter,
+                        "score": global_best.fitness,
+                        "current_score": current.fitness,
+                        "best_score": global_best.fitness,
+                    }
                     self.progress_history.append(point)
                     if progress_callback:
                         try:
@@ -130,6 +143,8 @@ class ConfigurableSolver:
                 final_point = {
                     "iteration": (restart + 1) * self.max_iterations,
                     "score": global_best.fitness,
+                    "current_score": current.fitness,
+                    "best_score": global_best.fitness,
                 }
                 self.progress_history.append(final_point)
                 if progress_callback:

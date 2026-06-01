@@ -1,13 +1,14 @@
 import {
-  Component, Input, OnChanges, OnInit, SimpleChanges, ViewChild, AfterViewInit
+  Component, Input, OnChanges, OnInit, SimpleChanges, ViewChild
 } from '@angular/core';
 import { ChartComponent } from 'ng-apexcharts';
-import { ScheduleResult } from '../../models/schedule.models';
+import { ProgressPoint, ScheduleResult } from '../../models/schedule.models';
 
-const LABEL   = '#94a3b8';
-const GRID    = '#e2e8f0';
-const INDIGO  = '#6366f1';
-const GREEN   = '#10b981';
+const LABEL = '#94a3b8';
+const GRID = '#e2e8f0';
+const INDIGO = '#6366f1';
+const GREEN = '#10b981';
+const RED = '#ef4444';
 
 type Pt = [number, number];
 
@@ -22,80 +23,76 @@ export class ChartsComponent implements OnInit, OnChanges {
 
   @Input() result: ScheduleResult | null = null;
   @Input() previousResult: ScheduleResult | null = null;
-  @Input() livePoints: { iteration: number; score: number }[] = [];
+  @Input() livePoints: ProgressPoint[] = [];
   @Input() isRunning = false;
   @Input() elapsedSeconds = 0;
+  @Input() timeBudgetSeconds = 30;
   @Input() formatDuration: (s: number) => string = s => `${s.toFixed(1)}s`;
 
-  // The chart always exists in DOM — we use CSS to show/hide the placeholder
   scoreOpts: any = {};
   hasData = false;
-  isLive  = false;   // true while receiving live updates
+  isLive = false;
 
   ngOnInit(): void {
-    this.scoreOpts = this.buildOpts([], true);
+    this.scoreOpts = this.buildOpts(this.toSeries([]), true);
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-
-    // ── Live points arriving while running ──────────────────────────────────
     if (changes['livePoints'] && this.isRunning && this.livePoints.length >= 2) {
-      const data = this.toData(this.livePoints);
-      this.isLive  = true;
+      const series = this.toSeries(this.livePoints);
+      this.isLive = true;
       this.hasData = true;
 
       if (this.chartRef) {
-        // Smooth incremental append — no full rebuild
-        this.chartRef.updateSeries([{ name: 'Score', data }], false);
-        // Switch colour to green on first live point
+        this.chartRef.updateSeries(series, false);
         if (this.livePoints.length === 2) {
-          this.chartRef.updateOptions({ colors: [GREEN] }, false, false);
+          this.chartRef.updateOptions({ colors: [RED, GREEN] }, false, false);
         }
       } else {
-        // Chart not yet mounted — set options directly
-        this.scoreOpts = this.buildOpts(data, true);
+        this.scoreOpts = this.buildOpts(series, true);
       }
     }
 
-    // ── Final result received ────────────────────────────────────────────────
     if (changes['result'] && this.result) {
       const pts = this.result.progressHistory?.length
         ? this.result.progressHistory
         : this.livePoints;
-      const data = this.toData(pts);
-      this.hasData = data.length >= 2;
-      this.isLive  = false;
+      const series = this.toSeries(pts);
+      this.hasData = series[0].data.length >= 2;
+      this.isLive = false;
 
       if (this.hasData) {
         if (this.chartRef) {
-          this.chartRef.updateOptions({ colors: [INDIGO] }, false, false);
-          this.chartRef.updateSeries([{ name: 'Score', data }], true);
+          this.chartRef.updateOptions({ colors: [RED, INDIGO] }, false, false);
+          this.chartRef.updateSeries(series, true);
         } else {
-          this.scoreOpts = this.buildOpts(data, false);
+          this.scoreOpts = this.buildOpts(series, false);
         }
       }
     }
 
-    // ── When run stops with no result (cancelled early) ─────────────────────
     if (changes['isRunning'] && !this.isRunning) {
       this.isLive = false;
       if (this.chartRef && this.hasData) {
-        this.chartRef.updateOptions({ colors: [INDIGO] }, false, false);
+        this.chartRef.updateOptions({ colors: [RED, INDIGO] }, false, false);
       }
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  private toData(pts: { iteration: number; score: number }[]): Pt[] {
-    return pts.map(p => [p.iteration, Math.round(p.score)] as Pt);
+  private toSeries(pts: ProgressPoint[]): { name: string; data: Pt[] }[] {
+    const current = pts.map(p => [p.iteration, Math.round(p.currentScore ?? p.score)] as Pt);
+    const best = pts.map(p => [p.iteration, Math.round(p.bestScore ?? p.score)] as Pt);
+    return [
+      { name: 'Current solution', data: current },
+      { name: 'Best solution', data: best },
+    ];
   }
 
-  private buildOpts(data: Pt[], live: boolean): any {
+  private buildOpts(series: { name: string; data: Pt[] }[], live: boolean): any {
     return {
-      series: [{ name: 'Score', data }],
+      series,
       chart: {
-        type: 'area',
+        type: 'line',
         height: 230,
         background: '#fff',
         foreColor: LABEL,
@@ -108,11 +105,16 @@ export class ChartsComponent implements OnInit, OnChanges {
           dynamicAnimation: { enabled: true, speed: 250 },
         },
       },
-      colors: [live ? GREEN : INDIGO],
-      stroke: { curve: 'smooth', width: 2.5 },
-      fill: {
-        type: 'gradient',
-        gradient: { shadeIntensity: 1, opacityFrom: 0.2, opacityTo: 0.02, stops: [0, 100] },
+      colors: [RED, live ? GREEN : INDIGO],
+      stroke: { curve: ['straight', 'smooth'], width: [2, 3] },
+      fill: { type: 'solid', opacity: 1 },
+      legend: {
+        show: true,
+        position: 'top',
+        horizontalAlign: 'left',
+        fontSize: '11px',
+        labels: { colors: LABEL },
+        markers: { width: 8, height: 8, radius: 8 },
       },
       xaxis: {
         type: 'numeric',
@@ -137,24 +139,23 @@ export class ChartsComponent implements OnInit, OnChanges {
     };
   }
 
-  // ── Display helpers ──────────────────────────────────────────────────────
-
   get currentScore(): number {
     if (this.isRunning && this.livePoints.length > 0) {
-      return Math.round(this.livePoints[this.livePoints.length - 1].score);
+      const last = this.livePoints[this.livePoints.length - 1];
+      return Math.round(last.bestScore ?? last.score);
     }
     return this.result?.score ? Math.round(this.result.score) : 0;
   }
 
   get timePct(): number {
     const t = this.isRunning ? this.elapsedSeconds : (this.result?.executionTime ?? 0);
-    return Math.min(100, (t / 30) * 100);
+    return Math.min(100, (t / Math.max(1, this.timeBudgetSeconds)) * 100);
   }
 
   get timeColor(): string {
     const t = this.isRunning ? this.elapsedSeconds : (this.result?.executionTime ?? 0);
-    if (t < 5)  return '#059669';
-    if (t < 15) return '#d97706';
+    if (t < this.timeBudgetSeconds * 0.35) return '#059669';
+    if (t < this.timeBudgetSeconds * 0.75) return '#d97706';
     return '#e11d48';
   }
 

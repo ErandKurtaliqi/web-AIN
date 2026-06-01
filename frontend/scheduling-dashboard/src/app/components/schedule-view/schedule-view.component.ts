@@ -4,7 +4,7 @@ import { takeUntil } from 'rxjs/operators';
 import { ScheduleService } from '../../services/schedule.service';
 import { SignalrService } from '../../services/signalr.service';
 import {
-  ScheduleResult, ScheduledProgram, RunRequest,
+  InstanceInfo, ScheduleResult, ScheduledProgram, RunRequest,
   AVAILABLE_OPERATORS, ALGORITHMS,
 } from '../../models/schedule.models';
 
@@ -18,6 +18,36 @@ interface GridProgram {
   leftPct: number;
   widthPct: number;
   manuallyMoved?: boolean;
+  channelName?: string;
+  genre?: string;
+  originalStart?: number;
+  originalEnd?: number;
+  originalScore?: number;
+  startDelta?: number;
+  endDelta?: number;
+  bonusHit?: boolean;
+  bonusValue?: number;
+  bonusGenre?: string;
+  timingIssue?: boolean;
+  priorityViolation?: boolean;
+  detailSubtitle?: string;
+}
+
+interface ProgramMeta {
+  programId: string;
+  channelId: number;
+  channelName: string;
+  start: number;
+  end: number;
+  genre: string;
+  score: number;
+}
+
+interface AnalysisItem {
+  title: string;
+  value: string;
+  tone: 'good' | 'warn' | 'danger' | 'info';
+  detail: string;
 }
 
 const GENRE_COLORS: Record<string, string> = {
@@ -46,17 +76,23 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
   selectedAlgorithm = 'hill_climbing_restarts';
   selectedOperators: string[] = ['replace', 'swap', 'shift_borders'];
 
-  params = { maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10 };
+  params = { maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 };
 
   isRunning = false;
   statusMessage = '';
 
   result: ScheduleResult | null = null;
+  instanceInfo: InstanceInfo | null = null;
+  programMeta = new Map<string, ProgramMeta>();
 
   openingTime  = 540;   // fallback — 09:00
   closingTime  = 1080;  // fallback — 18:00
   channelIds: number[] = [];
   gridPrograms: Map<number, GridProgram[]> = new Map();
+  bonusHits: GridProgram[] = [];
+  timingIssues: GridProgram[] = [];
+  priorityViolations: GridProgram[] = [];
+  switchEvents: { from: number; to: number; at: number; penalty: number }[] = [];
 
   // Manual override tracking
   manualScore: number | null = null;
@@ -74,6 +110,7 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
     this.scheduleService.getInstances().pipe(takeUntil(this.destroy$)).subscribe(res => {
       this.instances = res.instances;
     });
+    this.loadInstanceInfo();
 
     this.signalr.scheduleUpdate$.pipe(takeUntil(this.destroy$)).subscribe(msg => {
       this.statusMessage = msg.message;
@@ -117,6 +154,8 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
     this.result = null;
     this.channelIds = [];
     this.gridPrograms.clear();
+    this.clearAnalysis();
+    this.loadInstanceInfo();
   }
 
   toggleOperator(key: string): void {
@@ -158,6 +197,7 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
     this.statusMessage = `Score: ${result.score.toFixed(0)}`;
     this.manualScore = null;
     this.manualConflicts = null;
+    this.clearAnalysis();
 
     if (!result.scheduledPrograms?.length) return;
 
@@ -171,17 +211,32 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
         .map((p: ScheduledProgram) => this.toGridProgram(p, range));
       this.gridPrograms.set(ch, progs);
     }
+    this.computeDetailedAnalysis(result.scheduledPrograms);
   }
 
   private toGridProgram(p: ScheduledProgram, range: number): GridProgram {
+    const meta = this.programMeta.get(this.metaKey(p.channelId, p.programId));
     const leftPct  = ((p.start - this.openingTime) / range) * 100;
     const widthPct = ((p.end - p.start) / range) * 100;
+    const startDelta = meta ? p.start - meta.start : 0;
+    const endDelta = meta ? p.end - meta.end : 0;
     return {
       ...p,
       label:    p.programId,
-      color:    this.programColor(p.programId),
+      color:    this.programColor(meta?.genre ?? p.programId),
       leftPct:  Math.max(0, leftPct),
       widthPct: Math.max(0.5, widthPct),
+      channelName: meta?.channelName,
+      genre: meta?.genre,
+      originalStart: meta?.start,
+      originalEnd: meta?.end,
+      originalScore: meta?.score,
+      startDelta,
+      endDelta,
+      timingIssue: startDelta > 0 || endDelta < 0,
+      detailSubtitle: meta
+        ? `${meta.genre} | score ${meta.score} | original ${this.minuteLabel(meta.start)}-${this.minuteLabel(meta.end)}`
+        : 'No original metadata found',
     };
   }
 
@@ -193,13 +248,111 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
     return DEFAULT_COLOR;
   }
 
+  private loadInstanceInfo(): void {
+    this.scheduleService.getInstanceInfo(this.selectedInstance)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: info => {
+          this.instanceInfo = info;
+          this.openingTime = info.openingTime;
+          this.closingTime = info.closingTime;
+          this.rebuildProgramMeta(info);
+          if (this.result?.scheduledPrograms?.length) this.onResultReceived(this.result);
+        },
+        error: () => {},
+      });
+  }
+
+  private rebuildProgramMeta(info: InstanceInfo): void {
+    this.programMeta.clear();
+    for (const channel of info.channels) {
+      for (const program of channel.programs ?? []) {
+        this.programMeta.set(this.metaKey(channel.channelId, program.programId), {
+          ...program,
+          channelId: channel.channelId,
+          channelName: channel.channelName,
+        });
+      }
+    }
+  }
+
+  private computeDetailedAnalysis(schedule: ScheduledProgram[]): void {
+    const allPrograms = [...this.gridPrograms.values()].flat();
+
+    for (const prog of allPrograms) {
+      const bonus = this.matchingBonus(prog);
+      if (bonus) {
+        prog.bonusHit = true;
+        prog.bonusValue = bonus.bonus;
+        prog.bonusGenre = bonus.preferredGenre;
+        this.bonusHits.push(prog);
+      }
+
+      prog.priorityViolation = this.hasPriorityViolation(prog);
+      if (prog.priorityViolation) this.priorityViolations.push(prog);
+      if (prog.timingIssue) this.timingIssues.push(prog);
+    }
+
+    for (let i = 1; i < schedule.length; i++) {
+      const previous = schedule[i - 1];
+      const current = schedule[i];
+      if (previous.channelId !== current.channelId) {
+        this.switchEvents.push({
+          from: previous.channelId,
+          to: current.channelId,
+          at: current.start,
+          penalty: this.instanceInfo?.switchPenalty ?? 0,
+        });
+      }
+    }
+  }
+
+  private matchingBonus(prog: GridProgram): { preferredGenre: string; bonus: number } | null {
+    if (!this.instanceInfo || !prog.genre) return null;
+    for (const pref of this.instanceInfo.timePreferences) {
+      if (pref.preferredGenre !== prog.genre) continue;
+      const overlap = Math.max(0, Math.min(prog.end, pref.end) - Math.max(prog.start, pref.start));
+      if (overlap >= this.instanceInfo.minDuration) return pref;
+    }
+    return null;
+  }
+
+  private hasPriorityViolation(prog: GridProgram): boolean {
+    if (!this.instanceInfo) return false;
+    return this.instanceInfo.priorityBlocks.some(block => {
+      const overlaps = Math.max(0, Math.min(prog.end, block.end) - Math.max(prog.start, block.start)) > 0;
+      return overlaps && !block.allowedChannels.includes(prog.channelId);
+    });
+  }
+
+  private clearAnalysis(): void {
+    this.bonusHits = [];
+    this.timingIssues = [];
+    this.priorityViolations = [];
+    this.switchEvents = [];
+  }
+
+  private metaKey(channelId: number, programId: string): string {
+    return `${channelId}|${programId}`;
+  }
+
   // ── Template helpers ───────────────────────────────────────────────────────
 
   timeLabel(minuteOffset: number): string {
     const total = this.openingTime + minuteOffset;
+    return this.minuteLabel(total);
+  }
+
+  minuteLabel(total: number): string {
     const h = Math.floor(total / 60).toString().padStart(2, '0');
     const m = (total % 60).toString().padStart(2, '0');
     return `${h}:${m}`;
+  }
+
+  deltaLabel(delta = 0): string {
+    if (delta === 0) return 'on time';
+    const abs = Math.abs(delta);
+    return delta > 0 ? `${abs}m later` : `${abs}m earlier`;
   }
 
   get timeMarkers(): number[] {
@@ -212,5 +365,36 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
 
   programsForChannel(ch: number): GridProgram[] {
     return this.gridPrograms.get(ch) ?? [];
+  }
+
+  channelName(ch: number): string {
+    return this.instanceInfo?.channels.find(c => c.channelId === ch)?.channelName ?? `CH ${ch}`;
+  }
+
+  get penaltyCards(): AnalysisItem[] {
+    const pb = this.result?.penaltyBreakdown;
+    if (!pb) return [];
+    return [
+      { title: 'Base score', value: Math.round(pb.baseScore).toLocaleString(), tone: 'info', detail: 'Raw score from selected programs before bonuses and penalties.' },
+      { title: 'Bonus earned', value: `+${Math.round(pb.bonusEarned).toLocaleString()}`, tone: 'good', detail: `${this.bonusHits.length} programs matched preferred genre windows.` },
+      { title: 'Channel switches', value: `${pb.channelSwitches}`, tone: pb.channelSwitches ? 'warn' : 'good', detail: `Penalty total: -${Math.round(pb.switchPenaltyTotal).toLocaleString()}` },
+      { title: 'Timing violations', value: `${pb.timingViolations}`, tone: pb.timingViolations ? 'danger' : 'good', detail: `Penalty total: -${Math.round(pb.timingPenaltyTotal).toLocaleString()}` },
+      { title: 'Priority violations', value: `${this.priorityViolations.length}`, tone: this.priorityViolations.length ? 'danger' : 'good', detail: 'Programs placed in blocked channel/time zones.' },
+      { title: 'Final score', value: Math.round(pb.finalScore).toLocaleString(), tone: 'info', detail: 'Final evaluated solution score.' },
+    ];
+  }
+
+  get topBonusHits(): GridProgram[] {
+    return [...this.bonusHits].sort((a, b) => (b.bonusValue ?? 0) - (a.bonusValue ?? 0)).slice(0, 8);
+  }
+
+  get topTimingIssues(): GridProgram[] {
+    return [...this.timingIssues]
+      .sort((a, b) => Math.abs((b.startDelta ?? 0) + (b.endDelta ?? 0)) - Math.abs((a.startDelta ?? 0) + (a.endDelta ?? 0)))
+      .slice(0, 8);
+  }
+
+  get visibleSwitchEvents(): { from: number; to: number; at: number; penalty: number }[] {
+    return this.switchEvents.slice(0, 8);
   }
 }

@@ -6,7 +6,7 @@
     <div class="chart-header">
       <div>
         <div class="chart-title">
-          Score Progression
+          Heartbeat Progression
           <span class="live-badge" *ngIf="isLive">● LIVE</span>
         </div>
         <div class="chart-sub">
@@ -39,6 +39,7 @@
         [grid]="scoreOpts.grid"
         [tooltip]="scoreOpts.tooltip"
         [markers]="scoreOpts.markers"
+        [legend]="scoreOpts.legend"
         [dataLabels]="scoreOpts.dataLabels"
       ></apx-chart>
     </div>
@@ -92,7 +93,7 @@
         <div class="time-bar-track">
           <div class="time-bar-fill" [style.width.%]="timePct" [style.background]="timeColor"></div>
         </div>
-        <span class="time-bar-label">{{ timePct | number:'1.0-0' }}% of 30s budget</span>
+        <span class="time-bar-label">{{ timePct | number:'1.0-0' }}% of {{ formatDuration(timeBudgetSeconds) }} budget</span>
       </div>
 
       <div class="quick-stats" *ngIf="result.penaltyBreakdown">

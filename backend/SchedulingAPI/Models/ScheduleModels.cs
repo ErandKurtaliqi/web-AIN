@@ -11,6 +11,7 @@ public class RunRequest
     public int NumRestarts { get; set; } = 3;
     public int InsertionInterval { get; set; } = 50;
     public int MaxShift { get; set; } = 10;
+    public int MaxExecutionSeconds { get; set; } = 30;
 }
 
 public class ConfigEntry
@@ -21,6 +22,7 @@ public class ConfigEntry
     public int NumRestarts { get; set; } = 3;
     public int InsertionInterval { get; set; } = 50;
     public int MaxShift { get; set; } = 10;
+    public int MaxExecutionSeconds { get; set; } = 30;
 }
 
 public class CompareRequest
@@ -37,6 +39,7 @@ public class ReoptimizeRequest
     public int NumRestarts { get; set; } = 3;
     public int InsertionInterval { get; set; } = 50;
     public int MaxShift { get; set; } = 10;
+    public int MaxExecutionSeconds { get; set; } = 30;
 }
 
 // ── Outbound results (Python snake_case → C# PascalCase → Angular camelCase) ─
@@ -74,6 +77,8 @@ public class ProgressPoint
 {
     public int Iteration { get; set; }
     public double Score { get; set; }
+    public double CurrentScore { get; set; }
+    public double BestScore { get; set; }
 }
 
 public class ScheduleResult

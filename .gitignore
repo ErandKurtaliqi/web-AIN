@@ -2,6 +2,7 @@ __pycache__/
 .DS_Store
 *.swp
 *~
+.vs/
 
 # Web / Node (keep clones small and `git add` fast)
 node_modules/

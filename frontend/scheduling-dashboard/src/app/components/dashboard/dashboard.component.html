@@ -6,7 +6,8 @@
     </div>
     <div class="topbar-right">
       <select class="input" style="width:160px" [(ngModel)]="selectedInstance"
-        (ngModelChange)="onInstanceChange()" [disabled]="isRunning">
+        (ngModelChange)="onInstanceChange()" [disabled]="isRunning || instances.length === 0">
+        <option *ngIf="instances.length === 0" disabled value="">Loading instances…</option>
         <option *ngFor="let i of instances" [value]="i.name">{{ i.name }}</option>
       </select>
 

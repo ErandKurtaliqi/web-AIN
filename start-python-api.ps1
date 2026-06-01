@@ -1,12 +1,12 @@
-# Start the Python FastAPI microservice
-# Run from the AIN_25-26 project root
+# Start the Python FastAPI microservice (run from project root)
+Set-Location $PSScriptRoot
 
 Write-Host "Installing Python API dependencies..." -ForegroundColor Cyan
-pip install -r python_api/requirements.txt
+python -m pip install -r python_api/requirements.txt
 
 Write-Host ""
 Write-Host "Starting FastAPI on http://localhost:8000" -ForegroundColor Green
 Write-Host "Swagger UI: http://localhost:8000/docs" -ForegroundColor Yellow
 Write-Host ""
 
-uvicorn python_api.api:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn python_api.api:app --host 0.0.0.0 --port 8000 --reload --reload-dir python_api

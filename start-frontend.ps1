@@ -1,5 +1,5 @@
-# Start the Angular frontend
-# Requires Node.js 18+ and Angular CLI
+# Start the Angular web simulator (requires Node.js 18+)
+Set-Location $PSScriptRoot
 
 Write-Host "Installing Angular dependencies..." -ForegroundColor Cyan
 Set-Location frontend/scheduling-dashboard

@@ -23,7 +23,21 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAngular", policy =>
     {
         policy
-            .WithOrigins(allowedOrigins)
+            .SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrEmpty(origin) || !Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                    return false;
+                if (uri.Scheme != "http" && uri.Scheme != "https")
+                    return false;
+                // Angular dev server (localhost, 127.0.0.1, or LAN IP on port 4200)
+                if (uri.Port == 4200)
+                {
+                    return uri.Host is "localhost" or "127.0.0.1"
+                        || uri.Host.StartsWith("192.168.")
+                        || uri.Host.StartsWith("10.");
+                }
+                return allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase);
+            })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();   // required for SignalR

@@ -51,9 +51,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    this.scheduleService.getInstances()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(res => { this.instances = res.instances; });
+    this.loadInstances();
 
     // Live progress → accumulate points
     this.signalr.progressUpdate$.pipe(takeUntil(this.destroy$)).subscribe(point => {
@@ -89,6 +87,29 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  private loadInstances(): void {
+    this.scheduleService.getInstances()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: res => {
+          this.instances = res.instances ?? [];
+          if (this.instances.length === 0) {
+            this.statusMessage = 'No instances found in data/input — check Python API (port 8000)';
+            return;
+          }
+          if (!this.instances.some(i => i.name === this.selectedInstance)) {
+            this.selectedInstance = this.instances[0].name;
+          }
+          this.statusMessage = 'Ready - press Run to start';
+        },
+        error: () => {
+          this.instances = [];
+          this.statusMessage =
+            'Cannot load instances — start Python API (:8000) then .NET backend (:5000). Use http://localhost:4200';
+        },
+      });
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
   <header class="page-header">
     <div>
       <h1>Algorithm Comparison</h1>
-      <p class="subtitle">Live ranked comparison of operator configurations</p>
+      <p class="subtitle">Compare algorithms and operator mixes in real time</p>
     </div>
 
     <div class="header-right">
@@ -20,58 +20,80 @@
     </div>
   </header>
 
-  <section class="config-grid">
-    <div class="card config-card" *ngFor="let cfg of configs; let i = index" [class.active-config]="i === activeConfigIndex">
-      <div class="cfg-header">
-        <input class="cfg-label-input" [(ngModel)]="cfg.label" placeholder="Config label" [disabled]="isRunning">
-        <button class="btn-remove" (click)="removeConfig(i)" title="Remove" [disabled]="isRunning">x</button>
+  <section class="section-shell">
+    <div class="section-bar">
+      <div>
+        <h2>Configurations</h2>
+        <p>{{ configs.length }} setups queued for comparison</p>
       </div>
-
-      <div class="op-chips">
-        <button
-          *ngFor="let op of availableOperators"
-          class="op-chip"
-          [class.active]="isOpSelected(cfg, op.key)"
-          (click)="toggleOperatorInConfig(cfg, op.key)"
-          [disabled]="isRunning"
-          [title]="op.description"
-        >{{ op.label }}</button>
-      </div>
-
-      <div class="cfg-params">
-        <div class="param-row">
-          <label>Iterations</label>
-          <input type="number" [(ngModel)]="cfg.maxIterations" min="1" class="param-input" [disabled]="isRunning">
-        </div>
-        <div class="param-row">
-          <label>Restarts</label>
-          <input type="number" [(ngModel)]="cfg.numRestarts" min="1" class="param-input" [disabled]="isRunning">
-        </div>
-        <div class="param-row">
-          <label>Insert Interval</label>
-          <input type="number" [(ngModel)]="cfg.insertionInterval" min="1" class="param-input" [disabled]="isRunning">
-        </div>
-        <div class="param-row">
-          <label>Max Shift</label>
-          <input type="number" [(ngModel)]="cfg.maxShift" min="1" class="param-input" [disabled]="isRunning">
-        </div>
-      </div>
-
-      <div class="run-meter" *ngIf="liveRows[i]">
-        <div class="meter-meta">
-          <span>{{ liveRows[i].status | titlecase }}</span>
-          <span>{{ progressPercent(liveRows[i], i) }}%</span>
-        </div>
-        <div class="meter-track">
-          <span [style.width.%]="progressPercent(liveRows[i], i)"></span>
-        </div>
-      </div>
+      <span class="section-count">{{ completedRows().length }}/{{ liveRows.length }} complete</span>
     </div>
 
-    <button class="card add-card" (click)="addConfig()" [disabled]="isRunning">
-      <span class="add-icon">+</span>
-      <span>Add Configuration</span>
-    </button>
+    <div class="config-grid">
+      <div class="card config-card" *ngFor="let cfg of configs; let i = index" [class.active-config]="i === activeConfigIndex">
+        <div class="cfg-topline">
+          <span class="cfg-index">C{{ i + 1 }}</span>
+          <span class="cfg-state" *ngIf="liveRows[i]" [class.running]="liveRows[i].status === 'running'" [class.done]="liveRows[i].status === 'done'">{{ liveRows[i].status | titlecase }}</span>
+        </div>
+
+        <div class="cfg-header">
+          <input class="cfg-label-input" [(ngModel)]="cfg.label" placeholder="Config label" [disabled]="isRunning">
+          <button class="btn-remove" (click)="removeConfig(i)" title="Remove" [disabled]="isRunning">x</button>
+        </div>
+
+        <div class="algorithm-row">
+          <label>Algorithm</label>
+          <select class="algorithm-select" [(ngModel)]="cfg.algorithm" [disabled]="isRunning" (ngModelChange)="resetLiveRows()">
+            <option *ngFor="let algorithm of algorithms" [value]="algorithm.key">{{ algorithm.label }}</option>
+          </select>
+        </div>
+
+        <div class="op-chips">
+          <button
+            *ngFor="let op of availableOperators"
+            class="op-chip"
+            [class.active]="isOpSelected(cfg, op.key)"
+            (click)="toggleOperatorInConfig(cfg, op.key)"
+            [disabled]="isRunning"
+            [title]="op.description"
+          >{{ op.label }}</button>
+        </div>
+
+        <div class="cfg-params">
+          <div class="param-row">
+            <label>Iterations</label>
+            <input type="number" [(ngModel)]="cfg.maxIterations" min="1" class="param-input" [disabled]="isRunning">
+          </div>
+          <div class="param-row">
+            <label>Restarts</label>
+            <input type="number" [(ngModel)]="cfg.numRestarts" min="1" class="param-input" [disabled]="isRunning">
+          </div>
+          <div class="param-row">
+            <label>Insert Interval</label>
+            <input type="number" [(ngModel)]="cfg.insertionInterval" min="1" class="param-input" [disabled]="isRunning">
+          </div>
+          <div class="param-row">
+            <label>Max Shift</label>
+            <input type="number" [(ngModel)]="cfg.maxShift" min="1" class="param-input" [disabled]="isRunning">
+          </div>
+        </div>
+
+        <div class="run-meter" *ngIf="liveRows[i]">
+          <div class="meter-meta">
+            <span>{{ algorithmLabel(cfg.algorithm) }}</span>
+            <span>{{ progressPercent(liveRows[i], i) }}%</span>
+          </div>
+          <div class="meter-track">
+            <span [style.width.%]="progressPercent(liveRows[i], i)"></span>
+          </div>
+        </div>
+      </div>
+
+      <button class="card add-card" (click)="addConfig()" [disabled]="isRunning">
+        <span class="add-icon">+</span>
+        <span>Add Configuration</span>
+      </button>
+    </div>
   </section>
 
   <section class="insight-strip" *ngIf="liveRows.length">
@@ -94,6 +116,28 @@
   </section>
 
   <section class="curve-layout">
+    <div class="card chart-card live-rank">
+      <div class="chart-head">
+        <div>
+          <div class="section-title">Live Algorithm Ranking</div>
+          <p>Each bar combines the selected algorithm and operators for that configuration</p>
+        </div>
+        <span class="live-pill" [class.running]="isRunning">{{ isRunning ? 'Updating' : 'Ready' }}</span>
+      </div>
+      <apx-chart
+        [series]="liveRankOpts.series"
+        [chart]="liveRankOpts.chart"
+        [xaxis]="liveRankOpts.xaxis"
+        [yaxis]="liveRankOpts.yaxis"
+        [colors]="liveRankOpts.colors"
+        [plotOptions]="liveRankOpts.plotOptions"
+        [legend]="liveRankOpts.legend"
+        [tooltip]="liveRankOpts.tooltip"
+        [grid]="liveRankOpts.grid"
+        [dataLabels]="liveRankOpts.dataLabels"
+      ></apx-chart>
+    </div>
+
     <div class="card chart-card unified">
       <div class="chart-head">
         <div>
@@ -147,7 +191,128 @@
     <div class="result-ribbon" *ngFor="let r of compareResult.results" [class.best-ribbon]="isBest(r)">
       <span>{{ r.label }}</span>
       <strong>{{ r.score | number:'1.0-0' }}</strong>
-      <small>{{ r.conflicts }} conflicts · {{ r.executionTime | number:'1.1-2' }}s</small>
+      <small>{{ algorithmLabel(r.algorithm) }} - {{ r.conflicts }} conflicts - {{ r.executionTime | number:'1.1-2' }}s</small>
+    </div>
+  </section>
+  <section class="decision-layout" *ngIf="compareResult">
+    <div class="card decision-card winner-card">
+      <div class="decision-eyebrow">Decision Summary</div>
+      <h2>{{ bestResult()?.label }}</h2>
+      <p>{{ decisionSummary() }}</p>
+
+      <div class="winner-stats" *ngIf="bestResult() as best">
+        <div>
+          <span>Score</span>
+          <strong>{{ best.score | number:'1.0-0' }}</strong>
+        </div>
+        <div>
+          <span>Time</span>
+          <strong>{{ best.executionTime | number:'1.2-2' }}s</strong>
+        </div>
+        <div>
+          <span>Conflicts</span>
+          <strong>{{ best.conflicts }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="card decision-card insight-card">
+      <div class="decision-eyebrow">Best Use Cases</div>
+      <div class="use-case-list">
+        <div class="use-case-row" *ngFor="let r of finishedResults()">
+          <div>
+            <strong>{{ r.label }}</strong>
+            <span>{{ algorithmLabel(r.algorithm) }}</span>
+          </div>
+          <div class="use-case-tags">
+            <span *ngFor="let label of useCaseLabels(r)">{{ label }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="analysis-grid" *ngIf="compareResult">
+    <div class="card matrix-card">
+      <div class="chart-head">
+        <div>
+          <div class="section-title">Difference Matrix</div>
+          <p>Green marks the strongest result per metric, red marks the weakest</p>
+        </div>
+      </div>
+
+      <div class="matrix-scroll">
+        <table class="delta-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th *ngFor="let r of finishedResults()">{{ r.label }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let metric of decisionMetrics">
+              <td>{{ metric.label }}</td>
+              <td *ngFor="let r of finishedResults()" [class.best-cell]="metricTone(r, metric) === 'best'" [class.weak-cell]="metricTone(r, metric) === 'weak'">
+                <strong>{{ formatMetric(r, metric) }}</strong>
+                <span>{{ deltaText(r, metric) }}</span>
+              </td>
+            </tr>
+            <tr>
+              <td>Operators</td>
+              <td *ngFor="let r of finishedResults()">
+                <div class="mini-ops">
+                  <span *ngFor="let op of r.operators">{{ operatorLabel(op) }}</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card chart-card tradeoff-card">
+      <div class="chart-head">
+        <div>
+          <div class="section-title">Quality vs Speed Trade-off</div>
+          <p>Higher is better for score; further left is faster execution</p>
+        </div>
+      </div>
+      <apx-chart
+        [series]="tradeoffOpts.series"
+        [chart]="tradeoffOpts.chart"
+        [xaxis]="tradeoffOpts.xaxis"
+        [yaxis]="tradeoffOpts.yaxis"
+        [colors]="tradeoffOpts.colors"
+        [markers]="tradeoffOpts.markers"
+        [legend]="tradeoffOpts.legend"
+        [tooltip]="tradeoffOpts.tooltip"
+        [grid]="tradeoffOpts.grid"
+        [dataLabels]="tradeoffOpts.dataLabels"
+      ></apx-chart>
+    </div>
+  </section>
+
+  <section class="operator-impact" *ngIf="compareResult">
+    <div class="impact-head">
+      <div>
+        <h2>Operator Impact</h2>
+        <p>Shows which moves shaped each algorithm run</p>
+      </div>
+    </div>
+
+    <div class="impact-grid">
+      <div class="card impact-card" *ngFor="let r of finishedResults()">
+        <div class="impact-title">
+          <strong>{{ r.label }}</strong>
+          <span>{{ algorithmLabel(r.algorithm) }}</span>
+        </div>
+        <div class="impact-badges">
+          <span class="impact-badge" *ngFor="let badge of operatorImpactBadges(r)" [class.good]="badge.tone === 'good'">
+            <strong>{{ badge.label }}</strong>
+            <small>{{ badge.detail }}</small>
+          </span>
+        </div>
+      </div>
     </div>
   </section>
 </div>

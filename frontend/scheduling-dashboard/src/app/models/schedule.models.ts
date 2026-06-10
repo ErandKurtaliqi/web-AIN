@@ -120,7 +120,7 @@ export const AVAILABLE_OPERATORS = [
   { key: 'replace',       label: 'Replace',  icon: '⟳',  color: '#7c6ff7', description: 'Swap with unscheduled' },
   { key: 'shift',         label: 'Shift',    icon: '⟵',  color: '#f59e0b', description: 'Move in time' },
   { key: 'swap',          label: 'Swap',     icon: '⇆',  color: '#ec4899', description: 'Exchange timeslots' },
-  { key: 'shift_borders', label: 'Borders',  icon: '↔',  color: '#38bdf8', description: 'Resize duration' },
+  { key: 'shift_borders', label: 'Shift Borders',  icon: '↔',  color: '#38bdf8', description: 'Resize duration' },
 ];
 
 export const ALGORITHMS = [

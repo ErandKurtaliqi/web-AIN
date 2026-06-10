@@ -17,6 +17,8 @@
         <span *ngIf="isRunning" class="spinner"></span>
         <span *ngIf="!isRunning">Run</span>
       </button>
+
+      <button class="btn btn-ghost" *ngIf="isRunning" (click)="stop()">Stop</button>
     </div>
   </header>
 
@@ -88,25 +90,26 @@
   </section>
 
   <div class="card grid-card" *ngIf="channelIds.length > 0; else emptyState">
-    <div class="time-axis">
+    <div class="time-axis" [style.width.px]="timelineWidthPx">
       <div class="channel-label-spacer"></div>
-      <div class="time-track">
+      <div class="time-track" [style.width.px]="trackWidthPx">
         <div
           *ngFor="let t of timeMarkers"
           class="time-marker"
-          [style.left.%]="(t / (closingTime - openingTime)) * 100"
+          [style.left.px]="markerLeftPx(t)"
         >{{ timeLabel(t) }}</div>
       </div>
     </div>
 
-    <div class="channel-row" *ngFor="let ch of channelIds">
+    <div class="channel-row" *ngFor="let ch of channelIds" [style.width.px]="timelineWidthPx">
       <div class="channel-label" [title]="channelName(ch)">CH {{ ch }}</div>
-      <div class="program-track">
+      <div class="program-track" [style.height.px]="trackHeight(ch)" [style.width.px]="trackWidthPx">
         <div
           *ngFor="let prog of programsForChannel(ch)"
           class="program-block"
-          [style.left.%]="prog.leftPct"
-          [style.width.%]="prog.widthPct"
+          [style.left.px]="prog.leftPx"
+          [style.width.px]="prog.widthPx"
+          [style.top.px]="programTop(prog)"
           [style.background]="prog.color"
           [class.manual]="prog.manuallyMoved"
           [class.bonus-hit]="prog.bonusHit"

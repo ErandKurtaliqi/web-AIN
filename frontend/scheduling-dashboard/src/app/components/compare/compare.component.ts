@@ -4,6 +4,7 @@ import { takeUntil } from 'rxjs/operators';
 import { ScheduleService } from '../../services/schedule.service';
 import { SignalrService } from '../../services/signalr.service';
 import {
+  ALGORITHMS,
   AVAILABLE_OPERATORS,
   CompareResult,
   ProgressPoint,
@@ -13,6 +14,7 @@ import {
 
 interface CompareConfig {
   label: string;
+  algorithm: string;
   operators: Set<string>;
   maxIterations: number;
   numRestarts: number;
@@ -23,10 +25,24 @@ interface CompareConfig {
 
 interface CompareLiveRow {
   label: string;
+  algorithm: string;
   status: 'queued' | 'running' | 'done' | 'error';
   operators: string[];
   progress: ProgressPoint[];
   result?: ScheduleResult;
+}
+
+interface DecisionMetric {
+  key: 'score' | 'scoreImprovement' | 'executionTime' | 'conflicts';
+  label: string;
+  unit: string;
+  higherIsBetter: boolean;
+}
+
+interface OperatorBadge {
+  label: string;
+  detail: string;
+  tone: 'good' | 'neutral';
 }
 
 @Component({
@@ -47,20 +63,30 @@ export class CompareComponent implements OnInit, OnDestroy {
   liveRows: CompareLiveRow[] = [];
 
   readonly availableOperators = AVAILABLE_OPERATORS;
+  readonly algorithms = ALGORITHMS;
 
   configs: CompareConfig[] = [
-    { label: 'Config A - All Operators', operators: new Set(['insert', 'replace', 'shift', 'swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
-    { label: 'Config B - No Insert', operators: new Set(['replace', 'swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
-    { label: 'Config C - Swap + Borders', operators: new Set(['swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
+    { label: 'Config A - All Operators', algorithm: 'hill_climbing_restarts', operators: new Set(['insert', 'replace', 'shift', 'swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
+    { label: 'Config B - No Insert', algorithm: 'hill_climbing', operators: new Set(['replace', 'swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
+    { label: 'Config C - Swap + Borders', algorithm: 'ils', operators: new Set(['swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
   ];
 
+  liveRankOpts: any = {};
   scoreBarOpts: any = {};
   timeBarOpts: any = {};
   conflBarOpts: any = {};
   radarOpts: any = {};
   progressLineOpts: any = {};
   compareCurveOpts: any = {};
+  tradeoffOpts: any = {};
   ambientTick = 0;
+
+  readonly decisionMetrics: DecisionMetric[] = [
+    { key: 'score', label: 'Score', unit: '', higherIsBetter: true },
+    { key: 'scoreImprovement', label: 'Improvement', unit: '', higherIsBetter: true },
+    { key: 'executionTime', label: 'Time', unit: 's', higherIsBetter: false },
+    { key: 'conflicts', label: 'Conflicts', unit: '', higherIsBetter: false },
+  ];
 
   constructor(
     private scheduleService: ScheduleService,
@@ -83,6 +109,10 @@ export class CompareComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.isRunning) {
+      this.cancelRequested = true;
+      this.scheduleService.cancelRun(this.selectedInstance).subscribe({ error: () => {} });
+    }
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -90,6 +120,7 @@ export class CompareComponent implements OnInit, OnDestroy {
   addConfig(): void {
     this.configs.push({
       label: `Config ${String.fromCharCode(65 + this.configs.length)}`,
+      algorithm: 'hill_climbing_restarts',
       operators: new Set(['replace', 'swap', 'shift_borders']),
       maxIterations: 200,
       numRestarts: 3,
@@ -224,7 +255,7 @@ export class CompareComponent implements OnInit, OnDestroy {
 
       const request: RunRequest = {
         instance: this.selectedInstance,
-        algorithm: 'hill_climbing_restarts',
+        algorithm: cfg.algorithm,
         operators: Array.from(cfg.operators),
         maxIterations: cfg.maxIterations,
         numRestarts: cfg.numRestarts,
@@ -242,9 +273,10 @@ export class CompareComponent implements OnInit, OnDestroy {
     });
   }
 
-  private resetLiveRows(): void {
+  resetLiveRows(): void {
     this.liveRows = this.configs.map(cfg => ({
       label: cfg.label,
+      algorithm: cfg.algorithm,
       status: 'queued',
       operators: Array.from(cfg.operators),
       progress: [],
@@ -281,6 +313,38 @@ export class CompareComponent implements OnInit, OnDestroy {
     const labelStyle = { colors: '#64748b', fontSize: '11px', fontFamily: 'Inter, system-ui, sans-serif' };
 
     const ranked = [...finished].sort((a, b) => b.score - a.score);
+    const liveRanked = this.liveRows
+      .map((row, i) => ({
+        label: row.label,
+        algorithm: this.algorithmLabel(row.algorithm),
+        status: row.status,
+        score: row.result?.score
+          ?? row.progress[row.progress.length - 1]?.bestScore
+          ?? row.progress[row.progress.length - 1]?.currentScore
+          ?? row.progress[row.progress.length - 1]?.score
+          ?? 0,
+        color: row.result ? '#059669' : i === this.activeConfigIndex ? '#2563eb' : '#94a3b8',
+      }))
+      .sort((a, b) => b.score - a.score);
+
+    this.liveRankOpts = {
+      series: [{ name: 'Live score', data: liveRanked.map(r => Math.round(r.score)) }],
+      chart: { ...baseChart, type: 'bar', height: 300 },
+      xaxis: { labels: { style: labelStyle } },
+      yaxis: { labels: { style: labelStyle, maxWidth: 240 } },
+      colors: liveRanked.map(r => r.color),
+      plotOptions: { bar: { horizontal: true, borderRadius: 6, distributed: true, barHeight: '58%' } },
+      legend: { show: false },
+      tooltip: {
+        theme: 'light',
+        y: { formatter: (value: number, opts: any) => `${Math.round(value).toLocaleString()} | ${liveRanked[opts.dataPointIndex]?.algorithm ?? ''}` },
+      },
+      grid,
+      dataLabels: { enabled: true, formatter: (v: number) => v ? Math.round(v).toLocaleString() : '-', style: { colors: ['#ffffff'], fontSize: '11px' } },
+      xaxisCategories: liveRanked.map(r => `${r.label} - ${r.algorithm}`),
+    };
+    this.liveRankOpts.xaxis.categories = this.liveRankOpts.xaxisCategories;
+
     this.scoreBarOpts = {
       series: [{ name: 'Score', data: ranked.map(r => Math.round(r.score)) }],
       chart: { ...baseChart, type: 'bar', height: 320 },
@@ -369,6 +433,57 @@ export class CompareComponent implements OnInit, OnDestroy {
     };
 
     this.compareCurveOpts = this.buildUnifiedCurve(finished, palette, baseChart, grid, labelStyle);
+    this.tradeoffOpts = this.buildTradeoffChart(finished, palette, baseChart, grid, labelStyle);
+  }
+
+  private buildTradeoffChart(
+    finished: ScheduleResult[],
+    palette: string[],
+    baseChart: any,
+    grid: any,
+    labelStyle: any,
+  ): any {
+    return {
+      series: finished.map((result, index) => ({
+        name: result.label ?? `Config ${index + 1}`,
+        data: [{
+          x: +result.executionTime.toFixed(2),
+          y: Math.round(result.score),
+          conflicts: result.conflicts,
+          algorithm: this.algorithmLabel(result.algorithm),
+        }],
+      })),
+      chart: { ...baseChart, type: 'scatter', height: 360, zoom: { enabled: false } },
+      xaxis: {
+        title: { text: 'Execution time (seconds)' },
+        labels: { style: labelStyle, formatter: (value: number) => `${Number(value).toFixed(1)}s` },
+      },
+      yaxis: {
+        title: { text: 'Score' },
+        labels: { style: labelStyle, formatter: (value: number) => Math.round(value).toLocaleString() },
+      },
+      colors: palette,
+      markers: { size: 9, strokeWidth: 2, hover: { size: 12 } },
+      grid,
+      legend: { position: 'top', horizontalAlign: 'left', labels: { colors: '#475569' } },
+      tooltip: {
+        theme: 'light',
+        custom: ({ seriesIndex, w }: any) => {
+          const point = w.config.series[seriesIndex]?.data?.[0];
+          if (!point) return '';
+          return `
+            <div class="apex-tooltip">
+              <strong>${w.config.series[seriesIndex].name}</strong>
+              <span>${point.algorithm}</span>
+              <span>Score: ${point.y.toLocaleString()}</span>
+              <span>Time: ${point.x.toFixed(2)}s</span>
+              <span>Conflicts: ${point.conflicts}</span>
+            </div>
+          `;
+        },
+      },
+      dataLabels: { enabled: false },
+    };
   }
 
   private buildUnifiedCurve(
@@ -548,5 +663,138 @@ export class CompareComponent implements OnInit, OnDestroy {
       .replace('All Operators', 'All')
       .replace('No Insert', 'No Insert')
       .replace('Swap + Borders', 'Swap+Borders');
+  }
+
+  algorithmLabel(key: string): string {
+    return this.algorithms.find(algorithm => algorithm.key === key)?.label ?? key;
+  }
+
+  operatorLabel(key: string): string {
+    return this.availableOperators.find(operator => operator.key === key)?.label ?? key;
+  }
+
+  finishedResults(): ScheduleResult[] {
+    return this.compareResult?.results ?? [];
+  }
+
+  bestResult(): ScheduleResult | null {
+    const results = this.finishedResults();
+    return results.length ? results.reduce((winner, current) => current.score > winner.score ? current : winner, results[0]) : null;
+  }
+
+  fastestResult(): ScheduleResult | null {
+    const results = this.finishedResults();
+    return results.length ? results.reduce((winner, current) => current.executionTime < winner.executionTime ? current : winner, results[0]) : null;
+  }
+
+  cleanestResult(): ScheduleResult | null {
+    const results = this.finishedResults();
+    return results.length ? results.reduce((winner, current) => current.conflicts < winner.conflicts ? current : winner, results[0]) : null;
+  }
+
+  bestBalanceResult(): ScheduleResult | null {
+    const results = this.finishedResults();
+    return results.length ? results.reduce((winner, current) => this.balanceScore(current) > this.balanceScore(winner) ? current : winner, results[0]) : null;
+  }
+
+  decisionSummary(): string {
+    const best = this.bestResult();
+    const fastest = this.fastestResult();
+    const cleanest = this.cleanestResult();
+    if (!best || !fastest || !cleanest) {
+      return 'Run a comparison to generate a plain-language decision summary.';
+    }
+
+    const parts = [`${best.label} achieved the highest score with ${Math.round(best.score).toLocaleString()} points`];
+    if (fastest.label !== best.label) {
+      parts.push(`${fastest.label} was the fastest at ${fastest.executionTime.toFixed(2)}s`);
+    }
+    if (cleanest.label !== best.label) {
+      parts.push(`${cleanest.label} produced the cleanest schedule with ${cleanest.conflicts} conflicts`);
+    }
+    return `${parts.join(', ')}.`;
+  }
+
+  metricTone(result: ScheduleResult, metric: DecisionMetric): 'best' | 'weak' | 'neutral' {
+    const results = this.finishedResults();
+    if (results.length < 2) return 'neutral';
+    const values = results.map(item => Number(item[metric.key]) || 0);
+    const best = metric.higherIsBetter ? Math.max(...values) : Math.min(...values);
+    const worst = metric.higherIsBetter ? Math.min(...values) : Math.max(...values);
+    const value = Number(result[metric.key]) || 0;
+    if (value === best) return 'best';
+    if (value === worst) return 'weak';
+    return 'neutral';
+  }
+
+  formatMetric(result: ScheduleResult, metric: DecisionMetric): string {
+    const value = Number(result[metric.key]) || 0;
+    if (metric.key === 'executionTime') return `${value.toFixed(2)}${metric.unit}`;
+    if (metric.key === 'conflicts') return value.toLocaleString();
+    return Math.round(value).toLocaleString();
+  }
+
+  deltaText(result: ScheduleResult, metric: DecisionMetric): string {
+    const best = this.bestForMetric(metric);
+    if (!best || best === result) return 'Best';
+    const value = Number(result[metric.key]) || 0;
+    const bestValue = Number(best[metric.key]) || 0;
+    if (metric.key === 'executionTime') return `+${Math.max(0, value - bestValue).toFixed(2)}s`;
+    if (metric.key === 'conflicts') return `+${Math.max(0, value - bestValue)} conflicts`;
+    const gap = bestValue ? ((bestValue - value) / bestValue) * 100 : 0;
+    return `-${Math.max(0, gap).toFixed(1)}%`;
+  }
+
+  useCaseLabels(result: ScheduleResult): string[] {
+    const labels: string[] = [];
+    if (this.bestResult() === result) labels.push('Best Quality');
+    if (this.fastestResult() === result) labels.push('Fastest');
+    if (this.cleanestResult() === result) labels.push('Cleanest Schedule');
+    if (this.bestBalanceResult() === result) labels.push('Best Balance');
+    return labels.length ? labels : ['Specialist'];
+  }
+
+  operatorImpactBadges(result: ScheduleResult): OperatorBadge[] {
+    return (result.operators ?? []).map(key => {
+      const operator = this.availableOperators.find(op => op.key === key);
+      const stat = result.operatorStats?.[key];
+      if (stat) {
+        const delta = stat.scoreDelta >= 0 ? `+${Math.round(stat.scoreDelta).toLocaleString()}` : Math.round(stat.scoreDelta).toLocaleString();
+        return {
+          label: operator?.label ?? key,
+          detail: `${stat.improvements} improvements, ${delta} score`,
+          tone: stat.improvements > 0 || stat.scoreDelta > 0 ? 'good' : 'neutral',
+        };
+      }
+      return {
+        label: operator?.label ?? key,
+        detail: operator?.description ?? 'Selected operator',
+        tone: 'neutral',
+      };
+    });
+  }
+
+  private bestForMetric(metric: DecisionMetric): ScheduleResult | null {
+    const results = this.finishedResults();
+    if (!results.length) return null;
+    return results.reduce((winner, current) => {
+      const currentValue = Number(current[metric.key]) || 0;
+      const winnerValue = Number(winner[metric.key]) || 0;
+      return metric.higherIsBetter
+        ? currentValue > winnerValue ? current : winner
+        : currentValue < winnerValue ? current : winner;
+    }, results[0]);
+  }
+
+  private balanceScore(result: ScheduleResult): number {
+    const results = this.finishedResults();
+    if (!results.length) return 0;
+    const maxScore = Math.max(...results.map(item => item.score), 1);
+    const maxTime = Math.max(...results.map(item => item.executionTime), 1);
+    const maxConflicts = Math.max(...results.map(item => item.conflicts), 1);
+    const score = result.score / maxScore;
+    const speed = 1 - (result.executionTime / maxTime);
+    const clean = 1 - (result.conflicts / maxConflicts);
+    return (score * .5) + (Math.max(0, speed) * .25) + (Math.max(0, clean) * .25);
   }
 }

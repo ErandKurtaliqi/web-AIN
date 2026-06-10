@@ -17,6 +17,9 @@ interface GridProgram {
   color: string;
   leftPct: number;
   widthPct: number;
+  leftPx: number;
+  widthPx: number;
+  lane: number;
   manuallyMoved?: boolean;
   channelName?: string;
   genre?: string;
@@ -70,6 +73,7 @@ const DEFAULT_COLOR = '#6366f1';
 export class ScheduleViewComponent implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
+  private activeRunInstance: string | null = null;
 
   instances: { name: string }[] = [];
   selectedInstance = 'toy';
@@ -93,6 +97,14 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
   timingIssues: GridProgram[] = [];
   priorityViolations: GridProgram[] = [];
   switchEvents: { from: number; to: number; at: number; penalty: number }[] = [];
+  private channelLaneCounts = new Map<number, number>();
+  readonly laneHeight = 58;
+  readonly laneGap = 6;
+  readonly trackPadding = 5;
+  readonly minuteWidthPx = 8;
+  readonly minProgramWidthPx = 172;
+  readonly programGapPx = 8;
+  readonly channelLabelWidthPx = 76;
 
   // Manual override tracking
   manualScore: number | null = null;
@@ -117,8 +129,17 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
       if (msg.status === 'completed' && msg.result) {
         this.onResultReceived(msg.result);
         this.isRunning = false;
+        this.activeRunInstance = null;
       }
-      if (msg.status === 'error') this.isRunning = false;
+      if (msg.status === 'cancelled') {
+        this.statusMessage = 'Stopped';
+        this.isRunning = false;
+        this.activeRunInstance = null;
+      }
+      if (msg.status === 'error') {
+        this.isRunning = false;
+        this.activeRunInstance = null;
+      }
     });
 
     this.signalr.joinGroup(this.selectedInstance);
@@ -126,6 +147,9 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.isRunning && this.activeRunInstance) {
+      this.scheduleService.cancelRun(this.activeRunInstance).subscribe({ error: () => {} });
+    }
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -134,6 +158,7 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
     if (this.isRunning) return;
     if (this.selectedOperators.length === 0) { this.statusMessage = 'Select at least one operator'; return; }
     this.isRunning = true;
+    this.activeRunInstance = this.selectedInstance;
     this.statusMessage = 'Running…';
 
     const request: RunRequest = {
@@ -145,15 +170,38 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
 
     // POST returns 202; actual result arrives via SignalR
     this.scheduleService.run(request).pipe(takeUntil(this.destroy$)).subscribe({
-      error: err => { this.statusMessage = 'Error: ' + (err.error?.error ?? err.message); this.isRunning = false; },
+      error: err => {
+        this.statusMessage = 'Error: ' + (err.error?.error ?? err.message);
+        this.isRunning = false;
+        this.activeRunInstance = null;
+      },
     });
   }
 
+  stop(): void {
+    if (!this.isRunning) return;
+    const instanceToStop = this.activeRunInstance ?? this.selectedInstance;
+    this.scheduleService.cancelRun(instanceToStop)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({ error: () => {} });
+    this.statusMessage = 'Stopping...';
+  }
+
   onInstanceChange(): void {
+    const previousRunInstance = this.activeRunInstance;
+    if (this.isRunning && previousRunInstance) {
+      this.scheduleService.cancelRun(previousRunInstance)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({ error: () => {} });
+    }
+
+    this.isRunning = false;
+    this.activeRunInstance = null;
     this.signalr.joinGroup(this.selectedInstance);
     this.result = null;
     this.channelIds = [];
     this.gridPrograms.clear();
+    this.channelLaneCounts.clear();
     this.clearAnalysis();
     this.loadInstanceInfo();
   }
@@ -205,10 +253,12 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
     const range = this.closingTime - this.openingTime;
 
     this.gridPrograms.clear();
+    this.channelLaneCounts.clear();
     for (const ch of this.channelIds) {
       const progs = result.scheduledPrograms
         .filter((p: ScheduledProgram) => p.channelId === ch)
         .map((p: ScheduledProgram) => this.toGridProgram(p, range));
+      this.placeProgramsInLanes(ch, progs);
       this.gridPrograms.set(ch, progs);
     }
     this.computeDetailedAnalysis(result.scheduledPrograms);
@@ -218,6 +268,9 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
     const meta = this.programMeta.get(this.metaKey(p.channelId, p.programId));
     const leftPct  = ((p.start - this.openingTime) / range) * 100;
     const widthPct = ((p.end - p.start) / range) * 100;
+    const leftPx = Math.max(0, (p.start - this.openingTime) * this.minuteWidthPx);
+    const durationWidthPx = Math.max(1, (p.end - p.start) * this.minuteWidthPx);
+    const readableWidthPx = Math.max(this.minProgramWidthPx, p.programId.length * 8 + 34);
     const startDelta = meta ? p.start - meta.start : 0;
     const endDelta = meta ? p.end - meta.end : 0;
     return {
@@ -226,6 +279,9 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
       color:    this.programColor(meta?.genre ?? p.programId),
       leftPct:  Math.max(0, leftPct),
       widthPct: Math.max(0.5, widthPct),
+      leftPx,
+      widthPx: Math.max(readableWidthPx, durationWidthPx),
+      lane: 0,
       channelName: meta?.channelName,
       genre: meta?.genre,
       originalStart: meta?.start,
@@ -246,6 +302,18 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
       if (genre.includes(key)) return color;
     }
     return DEFAULT_COLOR;
+  }
+
+  private placeProgramsInLanes(channelId: number, programs: GridProgram[]): void {
+    let nextFreeLeftPx = 0;
+
+    for (const prog of [...programs].sort((a, b) => a.leftPx - b.leftPx || a.start - b.start)) {
+      prog.leftPx = Math.max(prog.leftPx, nextFreeLeftPx);
+      prog.lane = 0;
+      nextFreeLeftPx = prog.leftPx + prog.widthPx + this.programGapPx;
+    }
+
+    this.channelLaneCounts.set(channelId, 1);
   }
 
   private loadInstanceInfo(): void {
@@ -365,6 +433,34 @@ export class ScheduleViewComponent implements OnInit, OnDestroy {
 
   programsForChannel(ch: number): GridProgram[] {
     return this.gridPrograms.get(ch) ?? [];
+  }
+
+  get trackWidthPx(): number {
+    const baseWidth = Math.max(1200, (this.closingTime - this.openingTime) * this.minuteWidthPx);
+    const programRightEdge = [...this.gridPrograms.values()]
+      .flat()
+      .reduce((rightEdge, prog) => Math.max(rightEdge, prog.leftPx + prog.widthPx + this.programGapPx), 0);
+    return Math.max(baseWidth, programRightEdge + 24);
+  }
+
+  get timelineWidthPx(): number {
+    return this.channelLabelWidthPx + this.trackWidthPx;
+  }
+
+  markerLeftPx(minuteOffset: number): number {
+    return minuteOffset * this.minuteWidthPx;
+  }
+
+  trackHeight(ch: number): number {
+    return this.trackPadding * 2 + this.channelLaneCount(ch) * this.laneHeight + (this.channelLaneCount(ch) - 1) * this.laneGap;
+  }
+
+  programTop(prog: GridProgram): number {
+    return this.trackPadding + prog.lane * (this.laneHeight + this.laneGap);
+  }
+
+  private channelLaneCount(ch: number): number {
+    return this.channelLaneCounts.get(ch) ?? 1;
   }
 
   channelName(ch: number): string {

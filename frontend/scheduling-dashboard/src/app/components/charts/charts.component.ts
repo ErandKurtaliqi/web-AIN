@@ -38,6 +38,12 @@ export class ChartsComponent implements OnInit, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    if ((changes['result'] || changes['livePoints'] || changes['isRunning'])
+      && !this.result
+      && this.livePoints.length === 0) {
+      this.resetChart(this.isRunning);
+    }
+
     if (changes['livePoints'] && this.isRunning && this.livePoints.length >= 2) {
       const series = this.toSeries(this.livePoints);
       this.isLive = true;
@@ -86,6 +92,19 @@ export class ChartsComponent implements OnInit, OnChanges {
       { name: 'Current solution', data: current },
       { name: 'Best solution', data: best },
     ];
+  }
+
+  private resetChart(live: boolean): void {
+    this.hasData = false;
+    this.isLive = false;
+    const series = this.toSeries([]);
+
+    if (this.chartRef) {
+      this.chartRef.updateOptions({ colors: [RED, live ? GREEN : INDIGO] }, false, false);
+      this.chartRef.updateSeries(series, false);
+    } else {
+      this.scoreOpts = this.buildOpts(series, live);
+    }
   }
 
   private buildOpts(series: { name: string; data: Pt[] }[], live: boolean): any {

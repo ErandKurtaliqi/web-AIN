@@ -15,6 +15,7 @@ import {
 export class DashboardComponent implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
+  private activeRunInstance: string | null = null;
 
   // ── State ──────────────────────────────────────────────────────────────────
   instances: { name: string; file: string }[] = [];
@@ -65,12 +66,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
       } else if (msg.status === 'completed' && msg.result) {
         this.onResultReceived(msg.result);
         this.isRunning = false;
+        this.activeRunInstance = null;
       } else if (msg.status === 'cancelled') {
         this.statusMessage = 'Stopped';
         this.isRunning = false;
+        this.activeRunInstance = null;
       } else if (msg.status === 'error') {
         this.statusMessage = 'Error: ' + msg.message;
         this.isRunning = false;
+        this.activeRunInstance = null;
       }
     });
 
@@ -85,6 +89,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.isRunning && this.activeRunInstance) {
+      this.scheduleService.cancelRun(this.activeRunInstance).subscribe({ error: () => {} });
+    }
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -120,14 +127,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
     } else {
       this.selectedOperators = [...this.selectedOperators, key];
     }
-    // No auto-run — only the Run button triggers execution
+    // Selection changes clear the old chart; only Run starts execution.
   }
 
-  onInstanceChange(): void {
-    this.signalr.joinGroup(this.selectedInstance).catch(() => {});
+  async onInstanceChange(): Promise<void> {
+    const previousRunInstance = this.activeRunInstance;
+    if (this.isRunning && previousRunInstance) {
+      this.scheduleService.cancelRun(previousRunInstance)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({ error: () => {} });
+    }
+
+    this.isRunning = false;
+    this.activeRunInstance = null;
+    await this.signalr.joinGroup(this.selectedInstance).catch(() => {});
     this.result = null;
     this.previousResult = null;
     this.livePoints = [];
+    this.elapsedSeconds = 0;
     this.statusMessage = 'Ready - press Run to start';
   }
 
@@ -139,6 +156,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
 
     this.isRunning = true;
+    this.activeRunInstance = this.selectedInstance;
+    this.previousResult = this.result;
+    this.result = null;
     this.livePoints = [];
     this.elapsedSeconds = 0;
     this.timerStart = Date.now();
@@ -156,20 +176,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
       error: err => {
         this.statusMessage = 'Error: ' + (err.error?.error ?? err.message ?? 'Could not reach server');
         this.isRunning = false;
+        this.activeRunInstance = null;
       },
     });
   }
 
   stopAlgorithm(): void {
     if (!this.isRunning) return;
-    this.scheduleService.cancelRun(this.selectedInstance)
+    const instanceToStop = this.activeRunInstance ?? this.selectedInstance;
+    this.scheduleService.cancelRun(instanceToStop)
       .pipe(takeUntil(this.destroy$))
       .subscribe({ error: () => {} });
     this.statusMessage = 'Stopping...';
   }
 
   private onResultReceived(result: ScheduleResult): void {
-    this.previousResult = this.result;
+    if (this.result) {
+      this.previousResult = this.result;
+    }
     this.result = result;
     this.elapsedSeconds = result.executionTime;
     this.statusMessage = `Done - Score: ${result.score.toFixed(0)} - ${this.formatDuration(result.executionTime)}`;

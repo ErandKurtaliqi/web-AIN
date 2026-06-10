@@ -178,7 +178,8 @@
 /* ── Grid card ────────────────────────────────────────────────────────────── */
 .grid-card {
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
+  max-height: 72vh;
   padding: 16px 20px 22px;
   scrollbar-gutter: stable;
 }
@@ -202,11 +203,10 @@
 .time-axis {
   display: flex;
   margin-bottom: 8px;
-  min-width: 2500px;
 }
 
 .channel-label-spacer { width: 76px; flex-shrink: 0; }
-.time-track { flex: 1; position: relative; height: 20px; }
+.time-track { flex: 0 0 auto; position: relative; height: 20px; }
 .time-marker {
   position: absolute; transform: translateX(-50%);
   font-size: 11px;
@@ -222,7 +222,6 @@
   display: flex;
   align-items: center;
   margin-bottom: 8px;
-  min-width: 2500px;
 }
 .channel-label {
   width: 76px; flex-shrink: 0;
@@ -234,31 +233,31 @@
   background: var(--surface);
 }
 .program-track {
-  flex: 1;
+  flex: 0 0 auto;
   position: relative;
-  height: 54px;
+  min-height: 56px;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 8px;
-  overflow: hidden;
-  min-width: 2424px;
+  overflow: visible;
 }
 
 /* ── Program blocks ───────────────────────────────────────────────────────── */
 .program-block {
   position: absolute;
-  top: 5px; bottom: 5px;
+  height: 58px;
   border-radius: 7px;
-  overflow: visible;
+  overflow: auto hidden;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 1px;
-  padding: 4px 8px;
-  min-width: 118px;
+  padding: 14px 8px 5px;
   cursor: default;
   transition: filter .15s;
   border: 1px solid rgba(255,255,255,.1);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.55) transparent;
 }
 .program-block:hover { filter: brightness(1.08); z-index: 12; }
 .program-block.manual { border: 2px dashed rgba(255,255,255,.5); }
@@ -268,19 +267,20 @@
 
 .prog-label {
   font-size: 11px; font-weight: 800; color: rgba(255,255,255,.98);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 100%;
+  white-space: nowrap;
 }
 .prog-time {
-  font-size: 10px; color: rgba(255,255,255,.82); white-space: nowrap;
+  font-size: 10px; color: rgba(255,255,255,.9); white-space: nowrap;
 }
 
 .prog-badges {
   position: absolute;
-  top: -8px;
+  top: 3px;
   right: 4px;
   display: flex;
   gap: 3px;
+  max-width: calc(100% - 8px);
+  overflow: hidden;
 }
 
 .prog-badges b {

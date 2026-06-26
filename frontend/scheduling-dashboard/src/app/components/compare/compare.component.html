@@ -15,6 +15,10 @@
         <span *ngIf="!isRunning">Compare Live</span>
       </button>
 
+      <button class="btn btn-ghost" (click)="loadSpreadsheetComparison('requested')" [disabled]="isRunning || !selectedBenchmarkRow">
+        Sheet Compare
+      </button>
+
       <button class="btn btn-ghost" *ngIf="isRunning" (click)="stopComparison()">Stop</button>
       <span class="status-chip" [class.running]="isRunning">{{ statusMessage }}</span>
     </div>

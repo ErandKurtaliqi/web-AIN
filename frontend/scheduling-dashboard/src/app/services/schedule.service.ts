@@ -6,6 +6,7 @@ import { environment } from '../../environments/environment';
 import {
   RunRequest, CompareRequest,
   ScheduleResult, CompareResult, InstanceInfo,
+  BenchmarkResponse, BenchmarkRow, BenchmarkCell,
 } from '../models/schedule.models';
 
 @Injectable({ providedIn: 'root' })
@@ -56,6 +57,28 @@ export class ScheduleService {
     );
   }
 
+  getBenchmarkResults(instance?: string): Observable<BenchmarkResponse> {
+    const query = instance ? `?instance=${encodeURIComponent(instance)}` : '';
+    return this.http.get<any>(`${this.base}/benchmark-results${query}`).pipe(
+      map(raw => ({
+        algorithms: raw.algorithms ?? [],
+        requestedGroups: (raw.requestedGroups ?? raw.requested_groups ?? []).map((group: any) => ({
+          group: group.group,
+          algorithmKeys: group.algorithmKeys ?? group.algorithm_keys ?? [],
+          status: group.status,
+          note: group.note,
+        })),
+        rows: (raw.rows ?? []).map((row: any) => this.mapBenchmarkRow(row)),
+      })),
+    );
+  }
+
+  getBenchmarkCompare(instance: string, scope: 'requested' | 'all' = 'requested'): Observable<CompareResult> {
+    return this.http.get<any>(`${this.base}/benchmark-compare/${encodeURIComponent(instance)}?scope=${scope}`).pipe(
+      map(raw => this.mapCompareResult(raw)),
+    );
+  }
+
   /** Start a streaming run — returns 202, results come via SignalR. */
   run(request: RunRequest): Observable<{ started: boolean; instance: string }> {
     return this.http.post<{ started: boolean; instance: string }>(`${this.base}/run`, request);
@@ -72,5 +95,72 @@ export class ScheduleService {
 
   reoptimize(request: Omit<RunRequest, 'algorithm'>): Observable<ScheduleResult> {
     return this.http.post<ScheduleResult>(`${this.base}/reoptimize`, request);
+  }
+
+  private mapCompareResult(raw: any): CompareResult {
+    return {
+      instance: raw.instance,
+      results: (raw.results ?? []).map((result: any) => this.mapScheduleResult(result)),
+      bestLabel: raw.bestLabel ?? raw.best_label,
+      bestScore: raw.bestScore ?? raw.best_score,
+    };
+  }
+
+  private mapScheduleResult(raw: any): ScheduleResult {
+    return {
+      score: raw.score,
+      executionTime: raw.executionTime ?? raw.execution_time ?? 0,
+      conflicts: raw.conflicts ?? 0,
+      initialScore: raw.initialScore ?? raw.initial_score ?? 0,
+      scoreImprovement: raw.scoreImprovement ?? raw.score_improvement ?? 0,
+      algorithm: raw.algorithm,
+      instance: raw.instance,
+      operators: raw.operators ?? [],
+      penaltyBreakdown: raw.penaltyBreakdown ?? raw.penalty_breakdown,
+      operatorStats: raw.operatorStats ?? raw.operator_stats,
+      progressHistory: (raw.progressHistory ?? raw.progress_history ?? []).map((point: any) => ({
+        iteration: point.iteration,
+        score: point.score,
+        currentScore: point.currentScore ?? point.current_score,
+        bestScore: point.bestScore ?? point.best_score,
+      })),
+      scheduledPrograms: (raw.scheduledPrograms ?? raw.scheduled_programs ?? []).map((program: any) => ({
+        programId: program.programId ?? program.program_id,
+        channelId: program.channelId ?? program.channel_id,
+        start: program.start,
+        end: program.end,
+      })),
+      label: raw.label,
+      vsIlp: raw.vsIlp ?? raw.vs_ilp,
+      source: raw.source,
+      sourceFile: raw.sourceFile ?? raw.source_file,
+    };
+  }
+
+  private mapBenchmarkRow(raw: any): BenchmarkRow {
+    const cells: Record<string, BenchmarkCell> = {};
+    Object.entries(raw.cells ?? {}).forEach(([key, value]: [string, any]) => {
+      cells[key] = {
+        algorithm: value.algorithm,
+        label: value.label,
+        score: value.score,
+        vsIlp: value.vsIlp ?? value.vs_ilp,
+        status: value.status,
+        source: value.source,
+        sourceFile: value.sourceFile ?? value.source_file,
+        sourceAvailable: value.sourceAvailable ?? value.source_available ?? false,
+        requested: value.requested ?? false,
+      };
+    });
+
+    return {
+      index: raw.index,
+      instance: raw.instance,
+      displayName: raw.displayName ?? raw.display_name,
+      instanceType: raw.instanceType ?? raw.instance_type,
+      ilpScore: raw.ilpScore ?? raw.ilp_score,
+      ilpStatus: raw.ilpStatus ?? raw.ilp_status,
+      cells,
+    };
   }
 }

@@ -72,6 +72,9 @@ export interface ScheduleResult {
   progressHistory?: ProgressPoint[];
   scheduledPrograms?: ScheduledProgram[];
   label?: string;
+  vsIlp?: number | null;
+  source?: string;
+  sourceFile?: string | null;
 }
 
 export interface CompareResult {
@@ -79,6 +82,49 @@ export interface CompareResult {
   results: ScheduleResult[];
   bestLabel: string;
   bestScore: number;
+}
+
+export interface BenchmarkAlgorithm {
+  key: string;
+  label: string;
+  folder?: string | null;
+  requested: boolean;
+  description: string;
+}
+
+export interface BenchmarkGroup {
+  group: string;
+  algorithmKeys: string[];
+  status: 'mapped' | 'not_found';
+  note?: string;
+}
+
+export interface BenchmarkCell {
+  algorithm: string;
+  label: string;
+  score: number | null;
+  vsIlp: number | null;
+  status: 'missing' | 'available' | 'better_than_ilp' | 'equal_to_ilp' | 'below_ilp';
+  source: string;
+  sourceFile?: string | null;
+  sourceAvailable: boolean;
+  requested: boolean;
+}
+
+export interface BenchmarkRow {
+  index: number;
+  instance: string;
+  displayName: string;
+  instanceType: string;
+  ilpScore: number;
+  ilpStatus: string;
+  cells: Record<string, BenchmarkCell>;
+}
+
+export interface BenchmarkResponse {
+  algorithms: BenchmarkAlgorithm[];
+  requestedGroups: BenchmarkGroup[];
+  rows: BenchmarkRow[];
 }
 
 // ── SignalR messages ──────────────────────────────────────────────────────────
@@ -126,5 +172,7 @@ export const AVAILABLE_OPERATORS = [
 export const ALGORITHMS = [
   { key: 'hill_climbing_restarts', label: 'Hill Climbing + Restarts' },
   { key: 'hill_climbing',          label: 'Hill Climbing' },
-  { key: 'ils',                    label: 'Iterated Local Search' },
+  { key: 'ils',                    label: 'Classic Iterated Local Search' },
+  { key: 'intelligent_ils',        label: 'Intelligent Hybrid ILS' },
+  { key: 'gls',                    label: 'Guided Local Search' },
 ];

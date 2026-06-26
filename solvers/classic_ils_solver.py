@@ -18,6 +18,7 @@ class IteratedLocalSearchSolver(BaseSolver):
         super().__init__(solution)
         # Cache për qasje O(1) në të dhënat e programeve të instancës
         self.program_lookup = None
+        self.stop_event = None
 
     def solve(self, instance: InstanceData) -> Solution:
         print("\n=== Optimized Iterated Local Search ===")
@@ -37,6 +38,10 @@ class IteratedLocalSearchSolver(BaseSolver):
         best = copy.deepcopy(current)
 
         for i in range(max_iter):
+            if self.__should_stop():
+                print("[STOP] Cancel requested.")
+                break
+
             if i % 10 == 0:
                 print(f"[ILS] Iter {i} | Best fitness: {best.fitness}")
 
@@ -66,6 +71,9 @@ class IteratedLocalSearchSolver(BaseSolver):
         return best
 
     def __apply_intensification(self, instance: InstanceData, candidate: Solution) -> Solution:
+        if self.__should_stop():
+            return candidate
+
         stats = insertion_stats(candidate, instance)
 
         print(f"\n[CHECK] Intensification Triggered:")
@@ -89,6 +97,9 @@ class IteratedLocalSearchSolver(BaseSolver):
         current_best = candidate
 
         for i in range(3):
+            if self.__should_stop():
+                break
+
             temp = replace(copy.deepcopy(current_best), instance)
             # Sigurohemi që replacement nuk ka thyer rregullat e prioritetit
             if temp and self.__is_valid(temp, instance) and temp.fitness > current_best.fitness:
@@ -107,6 +118,9 @@ class IteratedLocalSearchSolver(BaseSolver):
         ls_iter = getattr(config, "LOCAL_SEARCH_ITERATIONS", 20)
 
         for _ in range(ls_iter):
+            if self.__should_stop():
+                break
+
             neighbor = self.__mutate(instance, copy.deepcopy(current))
             neighbor = self.__repair_if_needed(neighbor, instance)
 
@@ -126,6 +140,9 @@ class IteratedLocalSearchSolver(BaseSolver):
         strength = getattr(config, "PERTURBATION_STRENGTH", 3)
 
         for _ in range(strength):
+            if self.__should_stop():
+                break
+
             perturbed = self.__mutate(instance, perturbed)
             perturbed = self.__repair_if_needed(perturbed, instance)
 
@@ -181,3 +198,6 @@ class IteratedLocalSearchSolver(BaseSolver):
                         # print(f"Invalid: Channel {sp.channel_id} not allowed in block {block.start}-{block.end}")
                         return False
         return True
+
+    def __should_stop(self) -> bool:
+        return self.stop_event is not None and self.stop_event.is_set()

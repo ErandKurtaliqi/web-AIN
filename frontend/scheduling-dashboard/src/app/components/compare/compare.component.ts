@@ -6,6 +6,7 @@ import { SignalrService } from '../../services/signalr.service';
 import {
   ALGORITHMS,
   AVAILABLE_OPERATORS,
+  BenchmarkRow,
   CompareResult,
   ProgressPoint,
   RunRequest,
@@ -61,14 +62,15 @@ export class CompareComponent implements OnInit, OnDestroy {
   activeConfigIndex = -1;
   compareResult: CompareResult | null = null;
   liveRows: CompareLiveRow[] = [];
+  selectedBenchmarkRow: BenchmarkRow | null = null;
 
   readonly availableOperators = AVAILABLE_OPERATORS;
   readonly algorithms = ALGORITHMS;
 
   configs: CompareConfig[] = [
-    { label: 'Config A - All Operators', algorithm: 'hill_climbing_restarts', operators: new Set(['insert', 'replace', 'shift', 'swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
-    { label: 'Config B - No Insert', algorithm: 'hill_climbing', operators: new Set(['replace', 'swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
-    { label: 'Config C - Swap + Borders', algorithm: 'ils', operators: new Set(['swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
+    { label: 'Classic Iterated Local Search', algorithm: 'ils', operators: new Set(['insert', 'replace', 'swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
+    { label: 'Intelligent Hybrid ILS', algorithm: 'intelligent_ils', operators: new Set(['insert', 'replace', 'swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
+    { label: 'Guided Local Search', algorithm: 'gls', operators: new Set(['insert', 'replace', 'swap', 'shift_borders']), maxIterations: 200, numRestarts: 3, insertionInterval: 50, maxShift: 10, maxExecutionSeconds: 30 },
   ];
 
   liveRankOpts: any = {};
@@ -106,6 +108,7 @@ export class CompareComponent implements OnInit, OnDestroy {
     });
     this.signalr.joinGroup(this.selectedInstance).catch(() => {});
     this.resetLiveRows();
+    this.loadBenchmarkResults();
   }
 
   ngOnDestroy(): void {
@@ -143,6 +146,7 @@ export class CompareComponent implements OnInit, OnDestroy {
     this.compareResult = null;
     this.statusMessage = 'Ready';
     this.resetLiveRows();
+    this.loadBenchmarkResults();
   }
 
   toggleOperatorInConfig(cfg: CompareConfig, key: string): void {
@@ -210,6 +214,29 @@ export class CompareComponent implements OnInit, OnDestroy {
     this.cancelRequested = true;
     this.statusMessage = 'Stopping...';
     this.scheduleService.cancelRun(this.selectedInstance).pipe(takeUntil(this.destroy$)).subscribe({ error: () => {} });
+  }
+
+  loadSpreadsheetComparison(scope: 'requested' | 'all' = 'requested'): void {
+    if (this.isRunning) return;
+    this.statusMessage = 'Loading spreadsheet results...';
+    this.scheduleService.getBenchmarkCompare(this.selectedInstance, scope).pipe(takeUntil(this.destroy$)).subscribe({
+      next: result => {
+        this.compareResult = result;
+        this.statusMessage = `Sheet loaded - Best: ${result.bestLabel}`;
+        this.liveRows = result.results.map(row => ({
+          label: row.label ?? row.algorithm,
+          algorithm: row.algorithm,
+          status: 'done',
+          operators: row.operators ?? [],
+          progress: row.progressHistory ?? [],
+          result: row,
+        }));
+        this.buildCharts();
+      },
+      error: error => {
+        this.statusMessage = 'Sheet data unavailable: ' + (error?.error?.error ?? error?.message ?? error);
+      },
+    });
   }
 
   isBest(result: ScheduleResult): boolean {
@@ -282,6 +309,19 @@ export class CompareComponent implements OnInit, OnDestroy {
       progress: [],
     }));
     this.buildCharts();
+  }
+
+  private loadBenchmarkResults(): void {
+    this.scheduleService.getBenchmarkResults(this.selectedInstance).pipe(takeUntil(this.destroy$)).subscribe({
+      next: response => {
+        this.selectedBenchmarkRow = response.rows[0] ?? null;
+        this.buildCharts();
+      },
+      error: () => {
+        this.selectedBenchmarkRow = null;
+        this.buildCharts();
+      },
+    });
   }
 
   private updateCompareResult(): void {
@@ -666,6 +706,11 @@ export class CompareComponent implements OnInit, OnDestroy {
   }
 
   algorithmLabel(key: string): string {
+    if (key === 'classic_ils') return 'Classic Iterated Local Search';
+    if (key === 'dp_segmenting') return 'Dynamic Programming with Segmenting';
+    if (key === 'beam_search') return 'Beam Search';
+    if (key === 'gls') return 'Guided Local Search';
+    if (key === 'intelligent_ils') return 'Intelligent Hybrid ILS';
     return this.algorithms.find(algorithm => algorithm.key === key)?.label ?? key;
   }
 

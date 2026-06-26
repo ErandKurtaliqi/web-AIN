@@ -85,4 +85,34 @@ public class ScheduleController(PythonSchedulerService scheduler, ILogger<Schedu
             return StatusCode(503, new { error = ex.Message });
         }
     }
+
+    /// <summary>Return spreadsheet benchmark rows with local solution-file links.</summary>
+    [HttpGet("benchmark-results")]
+    public async Task<ActionResult<object>> GetBenchmarkResults([FromQuery] string? instance)
+    {
+        try
+        {
+            var result = await scheduler.GetBenchmarkResultsAsync(instance);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(503, new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Return benchmark data in the same shape as a comparison result.</summary>
+    [HttpGet("benchmark-compare/{instanceName}")]
+    public async Task<ActionResult<object>> GetBenchmarkCompare(string instanceName, [FromQuery] string scope = "requested")
+    {
+        try
+        {
+            var result = await scheduler.GetBenchmarkCompareAsync(instanceName, scope);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(503, new { error = ex.Message });
+        }
+    }
 }

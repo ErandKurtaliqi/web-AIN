@@ -199,6 +199,24 @@ public class PythonSchedulerService(
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
+    public async Task<object?> GetBenchmarkResultsAsync(string? instanceName = null)
+    {
+        var path = string.IsNullOrWhiteSpace(instanceName)
+            ? "/benchmark-results"
+            : $"/benchmark-results?instance={Uri.EscapeDataString(instanceName)}";
+        var response = await httpClient.GetAsync(path);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<object>(JsonOptions.Web);
+    }
+
+    public async Task<object?> GetBenchmarkCompareAsync(string instanceName, string scope = "requested")
+    {
+        var path = $"/benchmark-compare/{Uri.EscapeDataString(instanceName)}?scope={Uri.EscapeDataString(scope)}";
+        var response = await httpClient.GetAsync(path);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<object>(JsonOptions.Web);
+    }
+
     private async Task NotifyAsync(string? group, string status, string message, ScheduleResult? result = null)
     {
         if (group is null) return;

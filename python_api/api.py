@@ -10,6 +10,7 @@ directly — nothing is reimplemented here.
 import asyncio
 import json as stdlib_json
 import queue as stdlib_queue
+import re
 import sys
 import threading
 import time
@@ -33,7 +34,15 @@ from evaluators.base_evaluator import BaseEvaluator
 from io_utils.initial_solution_parser import SolutionParser
 from io_utils.instance_parser import InstanceParser
 from models.solution.solution import Solution
+from python_api.benchmark_data import (
+    BENCHMARK_ALGORITHMS,
+    BENCHMARK_ROWS,
+    REQUESTED_GROUPS,
+)
 from python_api.solver_wrapper import ConfigurableSolver
+from scheduling_intelligent_ils.intelligent_ils_scheduler import IntelligentILSSolver
+from solvers.classic_ils_solver import IteratedLocalSearchSolver
+from solvers.gls_solver import GuidedLocalSearchSolver
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -94,6 +103,113 @@ class ReoptimizeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+NAMED_SOLVER_OPERATORS = {
+    "ils": ["swap", "shift_borders", "insert", "replace"],
+    "classic_ils": ["swap", "shift_borders", "insert", "replace"],
+    "intelligent_ils": ["swap", "shift_borders", "insert", "replace"],
+    "gls": ["swap", "shift_borders", "insert", "replace", "remove"],
+}
+
+LIVE_ALGORITHM_ALIASES = {
+    "classic_ils": "ils",
+    "iterated_local_search": "ils",
+    "hils": "intelligent_ils",
+    "guided_local_search": "gls",
+}
+
+
+def _canonical_algorithm(algorithm: str) -> str:
+    key = (algorithm or "hill_climbing_restarts").strip().lower()
+    return LIVE_ALGORITHM_ALIASES.get(key, key)
+
+
+def _score_from_filename(path: Path) -> Optional[int]:
+    matches = re.findall(r"_(\d+)(?=\.json$)", path.name)
+    return int(matches[-1]) if matches else None
+
+
+def _find_solution_file(instance_name: str, folder_name: Optional[str]) -> Optional[Path]:
+    if not folder_name:
+        return None
+
+    folder = DATA_DIR / "solutions" / folder_name
+    if not folder.exists():
+        return None
+
+    base_name = instance_name.replace("_input", "")
+    candidates = list(folder.glob(f"{base_name}*.json"))
+
+    if not candidates:
+        return None
+
+    return max(
+        sorted(candidates),
+        key=lambda path: (_score_from_filename(path) is not None, _score_from_filename(path) or -1),
+    )
+
+
+def _vs_ilp(score: Optional[float], ilp_score: Optional[float]) -> Optional[float]:
+    if score is None or not ilp_score:
+        return None
+    return round((ilp_score - score) / ilp_score, 10)
+
+
+def _score_status(score: Optional[float], ilp_score: Optional[float]) -> str:
+    if score is None:
+        return "missing"
+    if ilp_score is None:
+        return "available"
+    if score > ilp_score:
+        return "better_than_ilp"
+    if score == ilp_score:
+        return "equal_to_ilp"
+    return "below_ilp"
+
+
+def _build_benchmark_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    cells: Dict[str, Any] = {}
+
+    for algorithm in BENCHMARK_ALGORITHMS:
+        key = algorithm["key"]
+        score = row["ilp_score"] if key == "ilp" else row["scores"].get(key)
+        source_file = _find_solution_file(row["instance"], algorithm.get("folder"))
+
+        cells[key] = {
+            "algorithm": key,
+            "label": algorithm["label"],
+            "score": score,
+            "vs_ilp": _vs_ilp(score, row["ilp_score"]),
+            "status": _score_status(score, row["ilp_score"]),
+            "source": "spreadsheet",
+            "source_file": (
+                str(source_file.relative_to(DATA_DIR / "solutions")).replace("\\", "/")
+                if source_file
+                else None
+            ),
+            "source_available": key == "ilp" or source_file is not None,
+            "requested": algorithm.get("requested", False),
+        }
+
+    return {
+        "index": row["index"],
+        "instance": row["instance"],
+        "display_name": row["display_name"],
+        "instance_type": row["instance_type"],
+        "ilp_score": row["ilp_score"],
+        "ilp_status": row["ilp_status"],
+        "cells": cells,
+    }
+
+
+def _benchmark_rows(instance_name: Optional[str] = None) -> List[Dict[str, Any]]:
+    normalized = instance_name.replace("_input", "") if instance_name else None
+    return [
+        _build_benchmark_row(row)
+        for row in BENCHMARK_ROWS
+        if normalized is None or row["instance"] == normalized
+    ]
+
+
 def _get_instance_path(instance_name: str) -> Path:
     for candidate in [
         DATA_DIR / "input" / f"{instance_name}.json",
@@ -104,7 +220,11 @@ def _get_instance_path(instance_name: str) -> Path:
     raise HTTPException(status_code=404, detail=f"Instance '{instance_name}' not found in data/input/")
 
 
-def _load_best_initial_solution(instance, instance_name: str) -> Solution:
+def _stop_requested(stop_event) -> bool:
+    return stop_event is not None and stop_event.is_set()
+
+
+def _load_best_initial_solution(instance, instance_name: str, stop_event=None) -> Solution:
     """
     Load the highest-fitness initial solution available for the given instance.
     Searches constructiveapproach/ and dp_segmenting/ folders.
@@ -119,9 +239,15 @@ def _load_best_initial_solution(instance, instance_name: str) -> Solution:
     best_fitness = float("-inf")
 
     for search_dir in search_dirs:
+        if _stop_requested(stop_event):
+            raise RuntimeError("Run stopped by user")
+
         if not search_dir.exists():
             continue
         for file_path in search_dir.glob(f"{base_name}*.json"):
+            if _stop_requested(stop_event):
+                raise RuntimeError("Run stopped by user")
+
             try:
                 schedule = SolutionParser(str(file_path)).parse()
                 evaluator = BaseEvaluator(instance)
@@ -148,11 +274,174 @@ def _load_best_initial_solution(instance, instance_name: str) -> Solution:
     return best_sol
 
 
-def _run(request: RunRequest) -> Dict[str, Any]:
+def _compute_solution_metrics(solution: Solution, instance) -> tuple[int, Dict[str, Any]]:
+    schedule = solution.selected.scheduled_programs
+    program_lookup = {
+        (ch.channel_id, p.program_id): p
+        for ch in instance.channels
+        for p in ch.programs
+    }
+
+    channel_switches = 0
+    timing_penalties = 0
+    base_score = 0
+    bonus_earned = 0
+
+    for i, sp in enumerate(schedule):
+        orig = program_lookup.get((sp.channel_id, sp.program_id))
+        if orig:
+            base_score += orig.score
+            for tp in instance.time_preferences:
+                if orig.genre == tp.preferred_genre:
+                    overlap = max(0, min(sp.end, tp.end) - max(sp.start, tp.start))
+                    if overlap >= instance.min_duration:
+                        bonus_earned += tp.bonus
+            if sp.start > orig.start:
+                timing_penalties += 1
+            if sp.end < orig.end:
+                timing_penalties += 1
+
+        if i > 0 and schedule[i - 1].channel_id != sp.channel_id:
+            channel_switches += 1
+
+    conflicts = channel_switches + timing_penalties
+    return conflicts, {
+        "base_score": base_score,
+        "bonus_earned": bonus_earned,
+        "channel_switches": channel_switches,
+        "switch_penalty_total": channel_switches * instance.switch_penalty,
+        "timing_violations": timing_penalties,
+        "timing_penalty_total": timing_penalties * instance.termination_penalty,
+        "final_score": solution.fitness,
+    }
+
+
+def _solution_to_result(
+    solution: Solution,
+    instance,
+    request: RunRequest,
+    initial_score: float,
+    execution_time: float,
+    progress_history: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    conflicts, penalty_breakdown = _compute_solution_metrics(solution, instance)
+    algorithm = _canonical_algorithm(request.algorithm)
+
+    return {
+        "score": solution.fitness,
+        "execution_time": round(execution_time, 3),
+        "conflicts": conflicts,
+        "penalty_breakdown": penalty_breakdown,
+        "operator_stats": None,
+        "progress_history": progress_history or [
+            {
+                "iteration": 0,
+                "score": initial_score,
+                "current_score": initial_score,
+                "best_score": initial_score,
+            },
+            {
+                "iteration": 1,
+                "score": solution.fitness,
+                "current_score": solution.fitness,
+                "best_score": solution.fitness,
+            },
+        ],
+        "scheduled_programs": [
+            {
+                "program_id": sp.program_id,
+                "channel_id": sp.channel_id,
+                "start": sp.start,
+                "end": sp.end,
+            }
+            for sp in solution.selected.scheduled_programs
+        ],
+        "initial_score": initial_score,
+        "algorithm": algorithm,
+        "operators": NAMED_SOLVER_OPERATORS.get(algorithm, request.operators),
+        "instance": request.instance,
+        "score_improvement": round(solution.fitness - initial_score, 2),
+    }
+
+
+def _run_named_solver(
+    request: RunRequest,
+    instance,
+    initial_solution: Solution,
+    initial_score: float,
+    progress_callback=None,
+    stop_event=None,
+) -> Dict[str, Any]:
+    algorithm = _canonical_algorithm(request.algorithm)
+    solver_by_algorithm = {
+        "ils": IteratedLocalSearchSolver,
+        "intelligent_ils": IntelligentILSSolver,
+        "gls": GuidedLocalSearchSolver,
+    }
+
+    solver_cls = solver_by_algorithm.get(algorithm)
+    if solver_cls is None:
+        raise HTTPException(status_code=400, detail=f"Unsupported algorithm '{request.algorithm}'")
+
+    progress_history = [
+        {
+            "iteration": 0,
+            "score": initial_score,
+            "current_score": initial_score,
+            "best_score": initial_score,
+        }
+    ]
+    if progress_callback:
+        progress_callback(progress_history[0])
+
+    if _stop_requested(stop_event):
+        raise RuntimeError("Run stopped before the solver started")
+
+    started = time.time()
+    solver = solver_cls(deepcopy(initial_solution))
+    solver.stop_event = stop_event
+    best_solution = solver.solve(instance)
+    execution_time = time.time() - started
+
+    final_point = {
+        "iteration": 1,
+        "score": best_solution.fitness,
+        "current_score": best_solution.fitness,
+        "best_score": best_solution.fitness,
+    }
+    progress_history.append(final_point)
+    if progress_callback:
+        progress_callback(final_point)
+
+    return _solution_to_result(
+        best_solution,
+        instance,
+        request,
+        initial_score,
+        execution_time,
+        progress_history,
+    )
+
+
+def _run(request: RunRequest, progress_callback=None, stop_event=None) -> Dict[str, Any]:
     instance_path = _get_instance_path(request.instance)
     instance = InstanceParser(str(instance_path)).parse()
-    initial_solution = _load_best_initial_solution(instance, request.instance)
+    if _stop_requested(stop_event):
+        raise RuntimeError("Run stopped by user")
+
+    initial_solution = _load_best_initial_solution(instance, request.instance, stop_event=stop_event)
     initial_score = initial_solution.fitness
+    algorithm = _canonical_algorithm(request.algorithm)
+
+    if algorithm in NAMED_SOLVER_OPERATORS:
+        return _run_named_solver(
+            request,
+            instance,
+            initial_solution,
+            initial_score,
+            progress_callback=progress_callback,
+            stop_event=stop_event,
+        )
 
     solver = ConfigurableSolver(
         solution=initial_solution,
@@ -165,9 +454,9 @@ def _run(request: RunRequest) -> Dict[str, Any]:
         max_execution_seconds=request.max_execution_seconds,
     )
 
-    result = solver.solve()
+    result = solver.solve(progress_callback=progress_callback, stop_event=stop_event)
     result["initial_score"] = initial_score
-    result["algorithm"] = request.algorithm
+    result["algorithm"] = algorithm
     result["operators"] = request.operators
     result["instance"] = request.instance
     result["score_improvement"] = round(result["score"] - initial_score, 2)
@@ -195,6 +484,85 @@ def list_instances():
         name = f.stem.replace("_input", "")
         instances.append({"name": name, "file": f.name})
     return {"instances": instances}
+
+
+@app.get("/benchmark-results")
+def benchmark_results(instance: Optional[str] = None):
+    """Return spreadsheet-style benchmark rows enriched with local result files."""
+    rows = _benchmark_rows(instance)
+    if instance and not rows:
+        raise HTTPException(status_code=404, detail=f"No benchmark row found for '{instance}'")
+
+    return {
+        "algorithms": BENCHMARK_ALGORITHMS,
+        "requested_groups": REQUESTED_GROUPS,
+        "rows": rows,
+    }
+
+
+@app.get("/benchmark-compare/{instance_name}")
+def benchmark_compare(instance_name: str, scope: str = "requested"):
+    """Return a CompareResult-shaped payload from the spreadsheet benchmark values."""
+    rows = _benchmark_rows(instance_name)
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No benchmark row found for '{instance_name}'")
+
+    row = rows[0]
+    include_requested_only = scope != "all"
+    results = []
+
+    for algorithm in BENCHMARK_ALGORITHMS:
+        if algorithm["key"] == "ilp":
+            continue
+        if include_requested_only and not algorithm.get("requested", False):
+            continue
+
+        cell = row["cells"].get(algorithm["key"])
+        if not cell or cell["score"] is None:
+            continue
+
+        results.append({
+            "score": cell["score"],
+            "execution_time": 0,
+            "conflicts": 0,
+            "initial_score": row["ilp_score"],
+            "score_improvement": round(cell["score"] - row["ilp_score"], 2),
+            "algorithm": algorithm["key"],
+            "instance": row["instance"],
+            "operators": [],
+            "penalty_breakdown": None,
+            "operator_stats": None,
+            "progress_history": [
+                {
+                    "iteration": 0,
+                    "score": row["ilp_score"],
+                    "current_score": row["ilp_score"],
+                    "best_score": row["ilp_score"],
+                },
+                {
+                    "iteration": 1,
+                    "score": cell["score"],
+                    "current_score": cell["score"],
+                    "best_score": cell["score"],
+                },
+            ],
+            "scheduled_programs": [],
+            "label": algorithm["label"],
+            "vs_ilp": cell["vs_ilp"],
+            "source": cell["source"],
+            "source_file": cell["source_file"],
+        })
+
+    if not results:
+        raise HTTPException(status_code=404, detail=f"No benchmark results found for '{instance_name}'")
+
+    best = max(results, key=lambda r: r["score"])
+    return {
+        "instance": row["instance"],
+        "results": results,
+        "best_label": best["label"],
+        "best_score": best["score"],
+    }
 
 
 @app.get("/solutions/{instance_name}")
@@ -281,41 +649,16 @@ async def run_algorithm_stream(request_data: RunRequest, http_request: Request):
       - {"type": "error",    "message": "..."}             – on failure
       - {"type": "cancelled"}                              – if client disconnects early
     """
-    try:
-        instance_path = _get_instance_path(request_data.instance)
-        instance = InstanceParser(str(instance_path)).parse()
-        initial_solution = _load_best_initial_solution(instance, request_data.instance)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    solver = ConfigurableSolver(
-        solution=initial_solution,
-        instance=instance,
-        enabled_operators=request_data.operators,
-        max_iterations=request_data.max_iterations,
-        num_restarts=request_data.num_restarts,
-        insertion_interval=request_data.insertion_interval,
-        max_shift=request_data.max_shift,
-        max_execution_seconds=request_data.max_execution_seconds,
-    )
-
     progress_q: stdlib_queue.Queue = stdlib_queue.Queue()
     stop_event = threading.Event()
-    initial_score = initial_solution.fitness
 
     def run_solver():
         try:
-            result = solver.solve(
+            result = _run(
+                request_data,
                 progress_callback=lambda p: progress_q.put({"type": "progress", **p}),
                 stop_event=stop_event,
             )
-            result["initial_score"] = initial_score
-            result["score_improvement"] = round(result["score"] - initial_score, 2)
-            result["algorithm"] = request_data.algorithm
-            result["instance"] = request_data.instance
-            result["operators"] = request_data.operators
             progress_q.put({"type": "result", **result})
         except Exception as exc:
             progress_q.put({"type": "error", "message": str(exc)})

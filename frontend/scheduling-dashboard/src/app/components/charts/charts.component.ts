@@ -44,16 +44,17 @@ export class ChartsComponent implements OnInit, OnChanges {
       this.resetChart(this.isRunning);
     }
 
-    if (changes['livePoints'] && this.isRunning && this.livePoints.length >= 2) {
+    if (changes['livePoints'] && this.isRunning && this.livePoints.length >= 1) {
       const series = this.toSeries(this.livePoints);
       this.isLive = true;
       this.hasData = true;
 
       if (this.chartRef) {
+        this.chartRef.updateOptions({
+          colors: [RED, GREEN],
+          markers: { size: this.livePoints.length === 1 ? 4 : 0, hover: { size: 5 } },
+        }, false, false);
         this.chartRef.updateSeries(series, false);
-        if (this.livePoints.length === 2) {
-          this.chartRef.updateOptions({ colors: [RED, GREEN] }, false, false);
-        }
       } else {
         this.scoreOpts = this.buildOpts(series, true);
       }
@@ -64,12 +65,15 @@ export class ChartsComponent implements OnInit, OnChanges {
         ? this.result.progressHistory
         : this.livePoints;
       const series = this.toSeries(pts);
-      this.hasData = series[0].data.length >= 2;
+      this.hasData = series[0].data.length >= 1;
       this.isLive = false;
 
       if (this.hasData) {
         if (this.chartRef) {
-          this.chartRef.updateOptions({ colors: [RED, INDIGO] }, false, false);
+          this.chartRef.updateOptions({
+            colors: [RED, INDIGO],
+            markers: { size: series[0].data.length === 1 ? 4 : 0, hover: { size: 5 } },
+          }, false, false);
           this.chartRef.updateSeries(series, true);
         } else {
           this.scoreOpts = this.buildOpts(series, false);
@@ -100,7 +104,10 @@ export class ChartsComponent implements OnInit, OnChanges {
     const series = this.toSeries([]);
 
     if (this.chartRef) {
-      this.chartRef.updateOptions({ colors: [RED, live ? GREEN : INDIGO] }, false, false);
+      this.chartRef.updateOptions({
+        colors: [RED, live ? GREEN : INDIGO],
+        markers: { size: 0, hover: { size: 5 } },
+      }, false, false);
       this.chartRef.updateSeries(series, false);
     } else {
       this.scoreOpts = this.buildOpts(series, live);
